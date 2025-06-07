@@ -1,0 +1,7 @@
+stack push val
+stack pop
+register define $temp = 0xFF
+mutex lock for write access
+clear heap
+clean buffer
+wipe all
