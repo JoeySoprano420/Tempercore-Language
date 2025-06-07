@@ -1,0 +1,7 @@
+if x > 3 then:
+    print "X is large"
+else:
+    skip
+
+loop 10 times:
+    jump to start if flag == true
