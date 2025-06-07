@@ -1,0 +1,6 @@
+let x = 5
+let y:decimal = 8.2
+enum mode { OFF, ON, STANDBY }
+
+define list alpha: array of string
+append "A" to alpha
