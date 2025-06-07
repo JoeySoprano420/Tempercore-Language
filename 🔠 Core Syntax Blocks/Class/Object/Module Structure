@@ -1,0 +1,8 @@
+class Node:
+    let value
+    let children: array of Node
+    function add(child): append child to children
+
+module DiagramRenderer:
+    import GraphMath
+    render tree with color "blue"
