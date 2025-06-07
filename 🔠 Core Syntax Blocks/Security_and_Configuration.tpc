@@ -1,0 +1,3 @@
+encrypt keybase with AES
+serialize config to file "settings.conf"
+validate config before apply
