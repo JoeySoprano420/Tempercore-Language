@@ -1,0 +1,5 @@
+inspect log level = major
+throw error "missing variable" unless safe_mode
+pass error if diagnostic = ignore
+assert x != 0
+highlight "Mismatch at branch"
