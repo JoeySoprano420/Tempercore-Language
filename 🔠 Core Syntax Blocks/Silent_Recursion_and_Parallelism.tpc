@@ -1,0 +1,9 @@
+routine solve_chain async:
+    call sublet check_solutions()
+    await confirmation
+    trigger followup if resolved
+
+parallel:
+    run A
+    run B
+    wait for all
