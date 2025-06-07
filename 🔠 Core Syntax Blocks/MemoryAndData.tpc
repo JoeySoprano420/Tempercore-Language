@@ -1,0 +1,5 @@
+define heap       // declares a memory region
+allocate buffer 128
+store "Welcome" in message
+dump message
+wipe message
