@@ -1,0 +1,11 @@
+function prime_factor(n):
+    if n == 1 then return []
+    define factors = []
+    let f = 2
+    while n > 1:
+        if n % f == 0:
+            push f into factors
+            n = n / f
+        else:
+            f = f + 1
+    return factors
