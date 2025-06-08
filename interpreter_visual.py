@@ -2712,3 +2712,167 @@ def run_tempercore_command(cmd):
         print(f"[Interpreter Error] {type(e).__name__}: {e}")
         traceback.print_exc()
 
+        import threading
+import asyncio
+import sys
+import ctypes
+import numpy as np
+
+# --- SIMD/AVX2 Vectorized Math ---
+def avx2_vector_add(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Add two float32 arrays using AVX2 (via numpy, which uses BLAS/SIMD under the hood)."""
+    assert a.dtype == np.float32 and b.dtype == np.float32
+    return np.add(a, b)
+
+# --- Memory Pool for Heap ---
+class MemoryPool:
+    def __init__(self, block_size=4096, pool_size=1024*1024*10):
+        self.block_size = block_size
+        self.pool_size = pool_size
+        self.pool = bytearray(pool_size)
+        self.free_blocks = list(range(0, pool_size, block_size))
+        self.lock = threading.Lock()
+        self.alloc_map = {}
+
+    def allocate(self, name, size):
+        with self.lock:
+            if not self.free_blocks:
+                raise MemoryError("Out of memory in pool")
+            block = self.free_blocks.pop()
+            self.alloc_map[name] = (block, size)
+            return memoryview(self.pool)[block:block+size]
+
+    def free(self, name):
+        with self.lock:
+            if name in self.alloc_map:
+                block, _ = self.alloc_map.pop(name)
+                self.free_blocks.append(block)
+
+# --- Async Heap with Memory Pool ---
+class AsyncHeap:
+    def __init__(self, pool: MemoryPool):
+        self.pool = pool
+        self.objects = {}
+        self.lock = asyncio.Lock()
+
+    async def allocate(self, name, value):
+        async with self.lock:
+            size = sys.getsizeof(value)
+            buf = self.pool.allocate(name, size)
+            buf[:len(bytes(str(value), 'utf-8'))] = bytes(str(value), 'utf-8')
+            self.objects[name] = buf
+
+    async def retrieve(self, name):
+        async with self.lock:
+            buf = self.objects.get(name)
+            if buf is not None:
+                return bytes(buf).decode('utf-8', errors='replace')
+            return None
+
+    async def delete(self, name):
+        async with self.lock:
+            if name in self.objects:
+                self.pool.free(name)
+                del self.objects[name]
+
+# --- Register Allocator for CodeGen ---
+class RegisterAllocator:
+    def __init__(self):
+        self.registers = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+
+    def alloc(self):
+        if not self.free:
+            raise RuntimeError("No free registers")
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+
+# --- Optimized Code Generator with SIMD and Register Allocation ---
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator()
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_vector_add(self, dest, src1, src2):
+        # AVX2: vaddps ymm_dest, ymm_src1, ymm_src2
+        self.emit(f"    vaddps {dest}, {src1}, {src2}")
+
+    def generate_stack_push(self, value):
+        reg = self.reg_alloc.alloc()
+        self.emit(f"    mov {reg}, {value}")
+        self.emit(f"    push {reg}")
+        self.reg_alloc.free_reg(reg)
+
+    def generate_stack_pop(self):
+        reg = self.reg_alloc.alloc()
+        self.emit(f"    pop {reg}")
+        self.reg_alloc.free_reg(reg)
+
+    def generate_add(self):
+        reg1 = self.reg_alloc.alloc()
+        reg2 = self.reg_alloc.alloc()
+        self.emit(f"    pop {reg1}")
+        self.emit(f"    pop {reg2}")
+        self.emit(f"    add {reg1}, {reg2}")
+        self.emit(f"    push {reg1}")
+        self.reg_alloc.free_reg(reg1)
+        self.reg_alloc.free_reg(reg2)
+
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+# --- Hardware Feature Detection ---
+def detect_avx2():
+    import subprocess
+    if sys.platform == "linux":
+        try:
+            out = subprocess.check_output("lscpu", shell=True).decode()
+            return "avx2" in out
+        except Exception:
+            return False
+    return False
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # SIMD vector add
+    a = np.ones(8, dtype=np.float32)
+    b = np.ones(8, dtype=np.float32)
+    c = avx2_vector_add(a, b)
+    print("SIMD add result:", c)
+
+    # Memory pool and async heap
+    pool = MemoryPool()
+    heap = AsyncHeap(pool)
+    async def heap_demo():
+        await heap.allocate("foo", "bar")
+        print("Heap retrieve:", await heap.retrieve("foo"))
+        await heap.delete("foo")
+    asyncio.run(heap_demo())
+
+    # Code generation
+    codegen = CodeGenerator()
+    if detect_avx2():
+        codegen.generate_vector_add("ymm0", "ymm1", "ymm2")
+    codegen.generate_stack_push(42)
+    codegen.generate_stack_pop()
+    codegen.generate_add()
+    print("\n[Optimized Assembly]:\n", codegen.output())
+
