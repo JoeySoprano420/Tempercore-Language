@@ -1078,4 +1078,1298 @@ def run_tempercore_command(cmd):
     except Exception as e:
         print(f"[Interpreter] Error: {e}")
 
-        
+        # ... [existing imports and classes above remain unchanged] ...
+
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.labels = set()
+        self.variables = {}
+        self.var_offset = 0
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    # --- Stack/Heap/Memory ---
+    def generate_stack_push(self, value):
+        self.emit(f"    ; stack push {value}")
+        self.emit(f"    mov rax, {value}")
+        self.emit(f"    push rax")
+
+    def generate_stack_pop(self):
+        self.emit("    ; stack pop")
+        self.emit("    pop rax")
+
+    def generate_heap_allocate(self, name, value):
+        # Simulate heap allocation (not real heap, just a comment)
+        self.emit(f"    ; heap allocate {name} = {value}")
+
+    def generate_heap_delete(self, name):
+        self.emit(f"    ; heap delete {name}")
+
+    def generate_heap_dump(self):
+        self.emit("    ; heap dump (not implemented)")
+
+    # --- Arithmetic/Logic ---
+    def generate_add(self):
+        self.emit("    ; add")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    add rax, rbx")
+        self.emit("    push rax")
+
+    def generate_sub(self):
+        self.emit("    ; sub")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    sub rbx, rax")
+        self.emit("    push rbx")
+
+    def generate_mul(self):
+        self.emit("    ; mul")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    imul rax, rbx")
+        self.emit("    push rax")
+
+    def generate_div(self):
+        self.emit("    ; div")
+        self.emit("    pop rbx")
+        self.emit("    pop rax")
+        self.emit("    cqo")
+        self.emit("    idiv rbx")
+        self.emit("    push rax")
+
+    def generate_neg(self):
+        self.emit("    ; negate")
+        self.emit("    pop rax")
+        self.emit("    neg rax")
+        self.emit("    push rax")
+
+    def generate_mod(self):
+        self.emit("    ; mod")
+        self.emit("    pop rbx")
+        self.emit("    pop rax")
+        self.emit("    cqo")
+        self.emit("    idiv rbx")
+        self.emit("    push rdx")
+
+    # --- Comparison/Conditionals ---
+    def generate_cmp(self):
+        self.emit("    ; compare")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    cmp rbx, rax")
+
+    def generate_jmp(self, label):
+        self.emit(f"    jmp {label}")
+
+    def generate_jz(self, label):
+        self.emit("    pop rax")
+        self.emit("    test rax, rax")
+        self.emit(f"    jz {label}")
+
+    def generate_jnz(self, label):
+        self.emit("    pop rax")
+        self.emit("    test rax, rax")
+        self.emit(f"    jnz {label}")
+
+    def generate_label(self, label):
+        self.labels.add(label)
+        self.emit(f"{label}:")
+
+    def generate_call(self, label):
+        self.emit(f"    call {label}")
+
+    def generate_ret(self):
+        self.emit("    ret")
+
+    # --- Buffer/IO/Flow ---
+    def generate_print(self):
+        self.emit("    ; print (not implemented)")
+
+    def generate_pause(self):
+        self.emit("    ; pause (not implemented)")
+
+    def generate_continue(self):
+        self.emit("    ; continue (not implemented)")
+
+    def generate_break(self):
+        self.emit("    ; break (not implemented)")
+
+    # --- Variable/Assignment ---
+    def generate_var(self, name, value):
+        # Simulate variable assignment (not real memory)
+        self.variables[name] = value
+        self.emit(f"    ; var {name} = {value}")
+
+    def generate_mov(self, dest, src):
+        self.emit(f"    mov {dest}, {src}")
+
+    # --- Error/Control ---
+    def generate_error(self, msg):
+        self.emit(f"    ; error: {msg}")
+
+    def generate_nop(self):
+        self.emit("    nop")
+
+    # --- Output ---
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+    def output_bytes(self):
+        return "\n".join(self.instructions)
+
+class MachineCodeExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "compile":
+            codegen = CodeGenerator()
+            i = 1
+            while i < len(tokens):
+                t = tokens[i]
+                if t == "stack" and i+2 < len(tokens) and tokens[i+1] == "push":
+                    codegen.generate_stack_push(tokens[i+2])
+                    i += 3
+                elif t == "stack" and i+1 < len(tokens) and tokens[i+1] == "pop":
+                    codegen.generate_stack_pop()
+                    i += 2
+                elif t == "heap" and i+2 < len(tokens) and tokens[i+1] == "allocate":
+                    codegen.generate_heap_allocate(tokens[i+2], tokens[i+3] if i+3 < len(tokens) else "0")
+                    i += 4
+                elif t == "heap" and i+1 < len(tokens) and tokens[i+1] == "delete":
+                    codegen.generate_heap_delete(tokens[i+2] if i+2 < len(tokens) else "")
+                    i += 3
+                elif t == "heap" and i+1 < len(tokens) and tokens[i+1] == "dump":
+                    codegen.generate_heap_dump()
+                    i += 2
+                elif t == "add":
+                    codegen.generate_add()
+                    i += 1
+                elif t == "sub":
+                    codegen.generate_sub()
+                    i += 1
+                elif t == "mul":
+                    codegen.generate_mul()
+                    i += 1
+                elif t == "div":
+                    codegen.generate_div()
+                    i += 1
+                elif t == "neg":
+                    codegen.generate_neg()
+                    i += 1
+                elif t == "mod":
+                    codegen.generate_mod()
+                    i += 1
+                elif t == "cmp":
+                    codegen.generate_cmp()
+                    i += 1
+                elif t == "jmp" and i+1 < len(tokens):
+                    codegen.generate_jmp(tokens[i+1])
+                    i += 2
+                elif t == "jz" and i+1 < len(tokens):
+                    codegen.generate_jz(tokens[i+1])
+                    i += 2
+                elif t == "jnz" and i+1 < len(tokens):
+                    codegen.generate_jnz(tokens[i+1])
+                    i += 2
+                elif t == "label" and i+1 < len(tokens):
+                    codegen.generate_label(tokens[i+1])
+                    i += 2
+                elif t == "call" and i+1 < len(tokens):
+                    codegen.generate_call(tokens[i+1])
+                    i += 2
+                elif t == "ret":
+                    codegen.generate_ret()
+                    i += 1
+                elif t == "var" and i+2 < len(tokens):
+                    codegen.generate_var(tokens[i+1], tokens[i+2])
+                    i += 3
+                elif t == "mov" and i+2 < len(tokens):
+                    codegen.generate_mov(tokens[i+1], tokens[i+2])
+                    i += 3
+                elif t == "print":
+                    codegen.generate_print()
+                    i += 1
+                elif t == "pause":
+                    codegen.generate_pause()
+                    i += 1
+                elif t == "continue":
+                    codegen.generate_continue()
+                    i += 1
+                elif t == "break":
+                    codegen.generate_break()
+                    i += 1
+                elif t == "nop":
+                    codegen.generate_nop()
+                    i += 1
+                elif t == "error" and i+1 < len(tokens):
+                    codegen.generate_error(tokens[i+1])
+                    i += 2
+                else:
+                    # Passive correct or skip error handling
+                    i += 1
+
+            print("\n[Generated x86-64 Assembly]:\n")
+            asm = codegen.output()
+            print(asm)
+            # AOT/JIT omitted for brevity, see previous code for integration
+            return True
+        return False
+
+    def help(self):
+        return (
+            "compile <commands...>   # Outputs x86-64 assembly for supported commands\n"
+            "Supported: stack push/pop, heap allocate/delete/dump, add, sub, mul, div, neg, mod, cmp, jmp, jz, jnz, label, call, ret, var, mov, print, pause, continue, break, nop, error"
+        )
+
+# Register extensions
+extensions = [
+    WebExtension(),
+    GUIExtension(),
+    MLExtension(),
+    MobileExtension(),
+    GameExtension(),
+    MachineCodeExtension(),
+]
+
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        return
+
+    for ext in extensions:
+        try:
+            if ext.handle(tokens):
+                return
+        except Exception as e:
+            print(f"[{ext.__class__.__name__}] Error: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        if command == "stack":
+            if tokens[1] == "push":
+                value = " ".join(tokens[2:])
+                stack.push(value)
+            elif tokens[1] == "pop":
+                print("Popped:", stack.pop())
+            elif tokens[1] == "peek":
+                print("Top of stack:", stack.peek())
+            elif tokens[1] == "clear":
+                stack.clear()
+            elif tokens[1] == "size":
+                print("Stack size:", stack.size())
+            else:
+                print("[Stack] Unknown stack command")
+        elif command == "heap":
+            action = tokens[1]
+            if action == "allocate":
+                name = tokens[2]
+                value = " ".join(tokens[3:])
+                heap.allocate(name, value)
+            elif action == "get":
+                name = tokens[2]
+                print(f"{name} =", heap.retrieve(name))
+            elif action == "delete":
+                heap.delete(tokens[2])
+            elif action == "dump":
+                print(heap.dump())
+            elif action == "clear":
+                heap.clear()
+            elif action == "keys":
+                print("Heap keys:", heap.keys())
+            else:
+                print("[Heap] Unknown heap command")
+        elif command == "stdlib":
+            fn = tokens[1]
+            args = [eval(arg) for arg in tokens[2:]]
+            if hasattr(T, fn):
+                result = getattr(T, fn)(*args)
+                print(f"Result of {fn}:", result)
+            else:
+                print(f"Function {fn} not found in stdlib")
+        else:
+            print(f"Unknown command: {cmd}")
+    except Exception as e:
+        print(f"[Interpreter] Error: {e}")
+
+        return True
+        return False
+
+    import threading
+import ctypes
+import sys
+from stdlib import TempercoreStdLib as T
+
+try:
+    from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+    KEYSTONE_AVAILABLE = True
+except ImportError:
+    KEYSTONE_AVAILABLE = False
+
+if sys.platform == "win32":
+    import mmap
+    import ctypes.wintypes
+
+class Stack:
+    def __init__(self):
+        self.stack = []
+
+    def push(self, val):
+        self.stack.append(val)
+        self.display()
+
+    def pop(self):
+        val = self.stack.pop() if self.stack else None
+        self.display()
+        return val
+
+    def peek(self):
+        return self.stack[-1] if self.stack else None
+
+    def clear(self):
+        self.stack.clear()
+        self.display()
+
+    def size(self):
+        return len(self.stack)
+
+    def display(self):
+        print("\n[STACK]")
+        for i, item in enumerate(reversed(self.stack)):
+            print(f"{len(self.stack) - i}: {item}")
+        print("-" * 20)
+
+class Heap:
+    def __init__(self):
+        self.heap = {}
+        self.lock = threading.Lock()
+
+    def allocate(self, name, value):
+        with self.lock:
+            # Store the value as a bytes buffer for authenticity
+            if isinstance(value, str):
+                value_bytes = value.encode('utf-8')
+            elif isinstance(value, (int, float)):
+                value_bytes = str(value).encode('utf-8')
+            elif isinstance(value, bytes):
+                value_bytes = value
+            else:
+                value_bytes = str(value).encode('utf-8')
+            buf = ctypes.create_string_buffer(value_bytes)
+            self.heap[name] = buf
+            self.display()
+
+    def retrieve(self, name):
+        with self.lock:
+            buf = self.heap.get(name, None)
+            if buf is not None:
+                # Return as string for display, but keep as buffer internally
+                return buf.value.decode('utf-8', errors='replace')
+            return None
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.heap:
+                del self.heap[name]
+                self.display()
+
+    def clear(self):
+        with self.lock:
+            self.heap.clear()
+            self.display()
+
+    def keys(self):
+        with self.lock:
+            return list(self.heap.keys())
+
+    def dump(self):
+        with self.lock:
+            # Return a dict of name: value (decoded)
+            return {k: v.value.decode('utf-8', errors='replace') for k, v in self.heap.items()}
+
+    def display(self):
+        print("\n[HEAP]")
+        for k, v in self.heap.items():
+            print(f"{k} => {v.value.decode('utf-8', errors='replace')}")
+        print("-" * 20)
+
+stack = Stack()
+heap = Heap()
+
+# --- Variable Table for Assignments ---
+class VariableTable:
+    def __init__(self):
+        self.vars = {}
+        self.lock = threading.Lock()
+
+    def set(self, name, value):
+        with self.lock:
+            self.vars[name] = value
+
+    def get(self, name):
+        with self.lock:
+            return self.vars.get(name, None)
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.vars:
+                del self.vars[name]
+
+    def clear(self):
+        with self.lock:
+            self.vars.clear()
+
+    def dump(self):
+        with self.lock:
+            return dict(self.vars)
+
+    def display(self):
+        print("\n[VARIABLES]")
+        for k, v in self.vars.items():
+            print(f"{k} = {v}")
+        print("-" * 20)
+
+variables = VariableTable()
+
+# --- Extension System ---
+class Extension:
+    def handle(self, tokens):
+        raise NotImplementedError
+
+    def help(self):
+        return ""
+
+# --- Existing Extensions (Web, GUI, ML, etc.) ---
+class WebExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "web":
+            if len(tokens) < 2:
+                print("[Web] Missing subcommand.")
+                return True
+            if tokens[1] == "serve":
+                print("[Web] Simulating web server at", tokens[2] if len(tokens) > 2 else "<missing address>")
+            elif tokens[1] == "request":
+                print("[Web] Simulating HTTP request to", tokens[2] if len(tokens) > 2 else "<missing url>")
+            elif tokens[1] == "socket":
+                print("[Web] Simulating websocket connection to", tokens[2] if len(tokens) > 2 else "<missing url>")
+            else:
+                print("[Web] Unknown web command")
+            return True
+        return False
+    def help(self):
+        return "web serve <address>, web request <url>, web socket <url>"
+
+class GUIExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "gui":
+            if len(tokens) < 2:
+                print("[GUI] Missing subcommand.")
+                return True
+            if tokens[1] == "window":
+                print("[GUI] Simulating window with title:", " ".join(tokens[2:]))
+            elif tokens[1] == "button":
+                print("[GUI] Simulating button:", " ".join(tokens[2:]))
+            elif tokens[1] == "label":
+                print("[GUI] Simulating label:", " ".join(tokens[2:]))
+            else:
+                print("[GUI] Unknown GUI command")
+            return True
+        return False
+    def help(self):
+        return "gui window <title>, gui button <label>, gui label <text>"
+
+class MLExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "ml":
+            if len(tokens) < 2:
+                print("[ML] Missing subcommand.")
+                return True
+            if tokens[1] == "train":
+                print("[ML] Simulating model training on data:", tokens[2] if len(tokens) > 2 else "<missing data>")
+            elif tokens[1] == "predict":
+                print("[ML] Simulating prediction for input:", tokens[2] if len(tokens) > 2 else "<missing input>")
+            elif tokens[1] == "evaluate":
+                print("[ML] Simulating model evaluation on:", tokens[2] if len(tokens) > 2 else "<missing data>")
+            else:
+                print("[ML] Unknown ML command")
+            return True
+        return False
+    def help(self):
+        return "ml train <data>, ml predict <input>, ml evaluate <data>"
+
+class MobileExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "mobile":
+            if len(tokens) < 2:
+                print("[Mobile] Missing subcommand.")
+                return True
+            if tokens[1] == "build":
+                print("[Mobile] Simulating mobile app build for platform:", tokens[2] if len(tokens) > 2 else "<missing platform>")
+            elif tokens[1] == "deploy":
+                print("[Mobile] Simulating mobile app deployment to:", tokens[2] if len(tokens) > 2 else "<missing device>")
+            else:
+                print("[Mobile] Unknown mobile command")
+            return True
+        return False
+    def help(self):
+        return "mobile build <platform>, mobile deploy <device>"
+
+class GameExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "game":
+            if len(tokens) < 2:
+                print("[Game] Missing subcommand.")
+                return True
+            if tokens[1] == "start":
+                print("[Game] Simulating game engine start")
+            elif tokens[1] == "entity":
+                print("[Game] Simulating entity creation:", " ".join(tokens[2:]))
+            elif tokens[1] == "event":
+                print("[Game] Simulating game event:", " ".join(tokens[2:]))
+            else:
+                print("[Game] Unknown game command")
+            return True
+        return False
+    def help(self):
+        return "game start, game entity <name>, game event <event>"
+
+# --- Machine Code Generation ---
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.labels = set()
+        self.variables = {}
+        self.var_offset = 0
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    # --- Stack/Heap/Memory ---
+    def generate_stack_push(self, value):
+        self.emit(f"    ; stack push {value}")
+        self.emit(f"    mov rax, {value}")
+        self.emit(f"    push rax")
+
+    def generate_stack_pop(self):
+        self.emit("    ; stack pop")
+        self.emit("    pop rax")
+
+    def generate_heap_allocate(self, name, value):
+        # Actually allocate in the Python heap
+        heap.allocate(name, value)
+
+    def generate_heap_delete(self, name):
+        heap.delete(name)
+
+    def generate_heap_dump(self):
+        dump = heap.dump()
+        self.emit(f"    ; heap dump: {dump}")
+
+    # --- Arithmetic/Logic ---
+    def generate_add(self):
+        self.emit("    ; add")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    add rax, rbx")
+        self.emit("    push rax")
+
+    def generate_sub(self):
+        self.emit("    ; sub")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    sub rbx, rax")
+        self.emit("    push rbx")
+
+    def generate_mul(self):
+        self.emit("    ; mul")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    imul rax, rbx")
+        self.emit("    push rax")
+
+    def generate_div(self):
+        self.emit("    ; div")
+        self.emit("    pop rbx")
+        self.emit("    pop rax")
+        self.emit("    cqo")
+        self.emit("    idiv rbx")
+        self.emit("    push rax")
+
+    def generate_neg(self):
+        self.emit("    ; negate")
+        self.emit("    pop rax")
+        self.emit("    neg rax")
+        self.emit("    push rax")
+
+    def generate_mod(self):
+        self.emit("    ; mod")
+        self.emit("    pop rbx")
+        self.emit("    pop rax")
+        self.emit("    cqo")
+        self.emit("    idiv rbx")
+        self.emit("    push rdx")
+
+    # --- Comparison/Conditionals ---
+    def generate_cmp(self):
+        self.emit("    ; compare")
+        self.emit("    pop rax")
+        self.emit("    pop rbx")
+        self.emit("    cmp rbx, rax")
+
+    def generate_jmp(self, label):
+        self.emit(f"    jmp {label}")
+
+    def generate_jz(self, label):
+        self.emit("    pop rax")
+        self.emit("    test rax, rax")
+        self.emit(f"    jz {label}")
+
+    def generate_jnz(self, label):
+        self.emit("    pop rax")
+        self.emit("    test rax, rax")
+        self.emit(f"    jnz {label}")
+
+    def generate_label(self, label):
+        self.labels.add(label)
+        self.emit(f"{label}:")
+
+    def generate_call(self, label):
+        self.emit(f"    call {label}")
+
+    def generate_ret(self):
+        self.emit("    ret")
+
+    # --- Buffer/IO/Flow ---
+    def generate_print(self):
+        self.emit("    ; print (not implemented)")
+
+    def generate_pause(self):
+        self.emit("    ; pause (not implemented)")
+
+    def generate_continue(self):
+        self.emit("    ; continue (not implemented)")
+
+    def generate_break(self):
+        self.emit("    ; break (not implemented)")
+
+    # --- Variable/Assignment ---
+    def generate_var(self, name, value):
+        variables.set(name, value)
+        self.emit(f"    ; var {name} = {value}")
+
+    def generate_mov(self, dest, src):
+        # If dest is a variable, assign in the variable table
+        if dest in variables.vars:
+            variables.set(dest, src)
+            self.emit(f"    ; mov {dest}, {src}")
+        else:
+            self.emit(f"    mov {dest}, {src}")
+
+    # --- Error/Control ---
+    def generate_error(self, msg):
+        self.emit(f"    ; error: {msg}")
+
+    def generate_nop(self):
+        self.emit("    nop")
+
+    # --- Output ---
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+    def output_bytes(self):
+        return "\n".join(self.instructions)
+
+class MachineCodeExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "compile":
+            codegen = CodeGenerator()
+            i = 1
+            while i < len(tokens):
+                t = tokens[i]
+                if t == "stack" and i+2 < len(tokens) and tokens[i+1] == "push":
+                    codegen.generate_stack_push(tokens[i+2])
+                    i += 3
+                elif t == "stack" and i+1 < len(tokens) and tokens[i+1] == "pop":
+                    codegen.generate_stack_pop()
+                    i += 2
+                elif t == "heap" and i+2 < len(tokens) and tokens[i+1] == "allocate":
+                    codegen.generate_heap_allocate(tokens[i+2], tokens[i+3] if i+3 < len(tokens) else "0")
+                    i += 4
+                elif t == "heap" and i+1 < len(tokens) and tokens[i+1] == "delete":
+                    codegen.generate_heap_delete(tokens[i+2] if i+2 < len(tokens) else "")
+                    i += 3
+                elif t == "heap" and i+1 < len(tokens) and tokens[i+1] == "dump":
+                    codegen.generate_heap_dump()
+                    i += 2
+                elif t == "add":
+                    codegen.generate_add()
+                    i += 1
+                elif t == "sub":
+                    codegen.generate_sub()
+                    i += 1
+                elif t == "mul":
+                    codegen.generate_mul()
+                    i += 1
+                elif t == "div":
+                    codegen.generate_div()
+                    i += 1
+                elif t == "neg":
+                    codegen.generate_neg()
+                    i += 1
+                elif t == "mod":
+                    codegen.generate_mod()
+                    i += 1
+                elif t == "cmp":
+                    codegen.generate_cmp()
+                    i += 1
+                elif t == "jmp" and i+1 < len(tokens):
+                    codegen.generate_jmp(tokens[i+1])
+                    i += 2
+                elif t == "jz" and i+1 < len(tokens):
+                    codegen.generate_jz(tokens[i+1])
+                    i += 2
+                elif t == "jnz" and i+1 < len(tokens):
+                    codegen.generate_jnz(tokens[i+1])
+                    i += 2
+                elif t == "label" and i+1 < len(tokens):
+                    codegen.generate_label(tokens[i+1])
+                    i += 2
+                elif t == "call" and i+1 < len(tokens):
+                    codegen.generate_call(tokens[i+1])
+                    i += 2
+                elif t == "ret":
+                    codegen.generate_ret()
+                    i += 1
+                elif t == "var" and i+2 < len(tokens):
+                    codegen.generate_var(tokens[i+1], tokens[i+2])
+                    i += 3
+                elif t == "mov" and i+2 < len(tokens):
+                    codegen.generate_mov(tokens[i+1], tokens[i+2])
+                    i += 3
+                elif t == "print":
+                    codegen.generate_print()
+                    i += 1
+                elif t == "pause":
+                    codegen.generate_pause()
+                    i += 1
+                elif t == "continue":
+                    codegen.generate_continue()
+                    i += 1
+                elif t == "break":
+                    codegen.generate_break()
+                    i += 1
+                elif t == "nop":
+                    codegen.generate_nop()
+                    i += 1
+                elif t == "error" and i+1 < len(tokens):
+                    codegen.generate_error(tokens[i+1])
+                    i += 2
+                else:
+                    i += 1
+
+            print("\n[Generated x86-64 Assembly]:\n")
+            asm = codegen.output()
+            print(asm)
+            # AOT/JIT omitted for brevity, see previous code for integration
+            return True
+        return False
+
+    def help(self):
+        return (
+            "compile <commands...>   # Outputs x86-64 assembly for supported commands\n"
+            "Supported: stack push/pop, heap allocate/delete/dump, add, sub, mul, div, neg, mod, cmp, jmp, jz, jnz, label, call, ret, var, mov, print, pause, continue, break, nop, error"
+        )
+
+# Register extensions
+extensions = [
+    WebExtension(),
+    GUIExtension(),
+    MLExtension(),
+    MobileExtension(),
+    GameExtension(),
+    MachineCodeExtension(),
+]
+
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        return
+
+    for ext in extensions:
+        try:
+            if ext.handle(tokens):
+                return
+        except Exception as e:
+            print(f"[{ext.__class__.__name__}] Error: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        if command == "stack":
+            if tokens[1] == "push":
+                value = " ".join(tokens[2:])
+                stack.push(value)
+            elif tokens[1] == "pop":
+                print("Popped:", stack.pop())
+            elif tokens[1] == "peek":
+                print("Top of stack:", stack.peek())
+            elif tokens[1] == "clear":
+                stack.clear()
+            elif tokens[1] == "size":
+                print("Stack size:", stack.size())
+            else:
+                print("[Stack] Unknown stack command")
+        elif command == "heap":
+            action = tokens[1]
+            if action == "allocate":
+                name = tokens[2]
+                value = " ".join(tokens[3:])
+                heap.allocate(name, value)
+            elif action == "get":
+                name = tokens[2]
+                print(f"{name} =", heap.retrieve(name))
+            elif action == "delete":
+                heap.delete(tokens[2])
+            elif action == "dump":
+                print(heap.dump())
+            elif action == "clear":
+                heap.clear()
+            elif action == "keys":
+                print("Heap keys:", heap.keys())
+            else:
+                print("[Heap] Unknown heap command")
+        elif command == "var":
+            name = tokens[1]
+            value = " ".join(tokens[2:])
+            variables.set(name, value)
+            variables.display()
+        elif command == "getvar":
+            name = tokens[1]
+            print(f"{name} =", variables.get(name))
+        elif command == "delvar":
+            name = tokens[1]
+            variables.delete(name)
+            variables.display()
+        elif command == "vars":
+            print(variables.dump())
+        elif command == "clearvars":
+            variables.clear()
+            variables.display()
+        elif command == "stdlib":
+            fn = tokens[1]
+            args = [eval(arg) for arg in tokens[2:]]
+            if hasattr(T, fn):
+                result = getattr(T, fn)(*args)
+                print(f"Result of {fn}:", result)
+            else:
+                print(f"Function {fn} not found in stdlib")
+        else:
+            print(f"Unknown command: {cmd}")
+    except Exception as e:
+        print(f"[Interpreter] Error: {e}")
+
+        return True
+        return False
+       
+    if len(tokens) < 2:
+        print("[Error] Missing subcommand for 'stack'.")
+    return
+
+# ... [existing code above remains unchanged] ...
+
+# --- Variable Table for Assignments ---
+class VariableTable:
+    def __init__(self):
+        self.vars = {}
+        self.lock = threading.Lock()
+
+    def set(self, name, value):
+        with self.lock:
+            self.vars[name] = value
+
+    def get(self, name):
+        with self.lock:
+            return self.vars.get(name, None)
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.vars:
+                del self.vars[name]
+
+    def clear(self):
+        with self.lock:
+            self.vars.clear()
+
+    def dump(self):
+        with self.lock:
+            return dict(self.vars)
+
+    def display(self):
+        print("\n[VARIABLES]")
+        for k, v in self.vars.items():
+            print(f"{k} = {v}")
+        print("-" * 20)
+
+variables = VariableTable()
+
+# --- Language: Extended Interpreter Commands ---
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        print("[Error] Empty command.")
+        return
+
+    # Try extensions first
+    for ext in extensions:
+        try:
+            if ext.handle(tokens):
+                return
+        except Exception as e:
+            print(f"[{ext.__class__.__name__}] Error: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        # Stack
+        if command == "stack":
+            if len(tokens) < 2:
+                print("[Error] Missing subcommand for 'stack'.")
+                return
+            sub = tokens[1]
+            if sub == "push":
+                if len(tokens) < 3:
+                    print("[Error] 'stack push' requires a value.")
+                    return
+                value = " ".join(tokens[2:])
+                stack.push(value)
+            elif sub == "pop":
+                print("Popped:", stack.pop())
+            elif sub == "peek":
+                print("Top of stack:", stack.peek())
+            elif sub == "clear":
+                stack.clear()
+            elif sub == "size":
+                print("Stack size:", stack.size())
+            else:
+                print(f"[Error] Unknown stack subcommand: {sub}")
+
+        # Heap
+        elif command == "heap":
+            if len(tokens) < 2:
+                print("[Error] Missing subcommand for 'heap'.")
+                return
+            action = tokens[1]
+            if action == "allocate":
+                if len(tokens) < 4:
+                    print("[Error] 'heap allocate' requires a name and value.")
+                    return
+                name = tokens[2]
+                value = " ".join(tokens[3:])
+                heap.allocate(name, value)
+            elif action == "get":
+                if len(tokens) < 3:
+                    print("[Error] 'heap get' requires a name.")
+                    return
+                name = tokens[2]
+                print(f"{name} =", heap.retrieve(name))
+            elif action == "delete":
+                if len(tokens) < 3:
+                    print("[Error] 'heap delete' requires a name.")
+                    return
+                heap.delete(tokens[2])
+            elif action == "dump":
+                print(heap.dump())
+            elif action == "clear":
+                heap.clear()
+            elif action == "keys":
+                print("Heap keys:", heap.keys())
+            else:
+                print(f"[Error] Unknown heap subcommand: {action}")
+
+        # Variables
+        elif command == "var":
+            if len(tokens) < 3:
+                print("[Error] 'var' requires a name and value.")
+                return
+            name = tokens[1]
+            value = " ".join(tokens[2:])
+            variables.set(name, value)
+            variables.display()
+        elif command == "getvar":
+            if len(tokens) < 2:
+                print("[Error] 'getvar' requires a name.")
+                return
+            name = tokens[1]
+            print(f"{name} =", variables.get(name))
+        elif command == "delvar":
+            if len(tokens) < 2:
+                print("[Error] 'delvar' requires a name.")
+                return
+            name = tokens[1]
+            variables.delete(name)
+            variables.display()
+        elif command == "vars":
+            print(variables.dump())
+        elif command == "clearvars":
+            variables.clear()
+            variables.display()
+
+        # Conditionals
+        elif command == "if":
+            # Syntax: if <var> <operator> <value> then <command>
+            if len(tokens) < 6 or tokens[4] != "then":
+                print("[Error] Syntax: if <var> <operator> <value> then <command>")
+                return
+            var = variables.get(tokens[1])
+            op = tokens[2]
+            val = tokens[3]
+            cond = False
+            try:
+                if op == "==":
+                    cond = str(var) == val
+                elif op == "!=":
+                    cond = str(var) != val
+                elif op == "<":
+                    cond = float(var) < float(val)
+                elif op == "<=":
+                    cond = float(var) <= float(val)
+                elif op == ">":
+                    cond = float(var) > float(val)
+                elif op == ">=":
+                    cond = float(var) >= float(val)
+                else:
+                    print(f"[Error] Unknown operator: {op}")
+                    return
+            except Exception as e:
+                print(f"[Error] Condition evaluation failed: {e}")
+                return
+            if cond:
+                run_tempercore_command(" ".join(tokens[5:]))
+
+        # Loops
+        elif command == "while":
+            # Syntax: while <var> <operator> <value> do <command>
+            if len(tokens) < 6 or tokens[4] != "do":
+                print("[Error] Syntax: while <var> <operator> <value> do <command>")
+                return
+            varname = tokens[1]
+            op = tokens[2]
+            val = tokens[3]
+            body = " ".join(tokens[5:])
+            while True:
+                var = variables.get(varname)
+                try:
+                    if op == "==":
+                        cond = str(var) == val
+                    elif op == "!=":
+                        cond = str(var) != val
+                    elif op == "<":
+                        cond = float(var) < float(val)
+                    elif op == "<=":
+                        cond = float(var) <= float(val)
+                    elif op == ">":
+                        cond = float(var) > float(val)
+                    elif op == ">=":
+                        cond = float(var) >= float(val)
+                    else:
+                        print(f"[Error] Unknown operator: {op}")
+                        break
+                except Exception as e:
+                    print(f"[Error] Condition evaluation failed: {e}")
+                    break
+                if not cond:
+                    break
+                run_tempercore_command(body)
+
+        # List/Array
+        elif command == "list":
+            # Syntax: list <name> [<item1> <item2> ...]
+            if len(tokens) < 3:
+                print("[Error] 'list' requires a name and at least one item.")
+                return
+            name = tokens[1]
+            items = tokens[2:]
+            variables.set(name, items)
+            print(f"List {name} =", items)
+        elif command == "append":
+            # Syntax: append <listname> <item>
+            if len(tokens) < 3:
+                print("[Error] 'append' requires a list name and an item.")
+                return
+            name = tokens[1]
+            item = tokens[2]
+            lst = variables.get(name)
+            if not isinstance(lst, list):
+                print(f"[Error] {name} is not a list.")
+                return
+            lst.append(item)
+            variables.set(name, lst)
+            print(f"List {name} =", lst)
+        elif command == "pop":
+            # Syntax: pop <listname>
+            if len(tokens) < 2:
+                print("[Error] 'pop' requires a list name.")
+                return
+            name = tokens[1]
+            lst = variables.get(name)
+            if not isinstance(lst, list):
+                print(f"[Error] {name} is not a list.")
+                return
+            if not lst:
+                print(f"[Error] {name} is empty.")
+                return
+            val = lst.pop()
+            variables.set(name, lst)
+            print(f"Popped {val} from {name}. List now: {lst}")
+
+        # Math
+        elif command == "add":
+            # Syntax: add <var1> <var2> <resultvar>
+            if len(tokens) < 4:
+                print("[Error] 'add' requires two variables and a result variable.")
+                return
+            v1 = float(variables.get(tokens[1]))
+            v2 = float(variables.get(tokens[2]))
+            variables.set(tokens[3], v1 + v2)
+            print(f"{tokens[3]} = {v1 + v2}")
+        elif command == "sub":
+            if len(tokens) < 4:
+                print("[Error] 'sub' requires two variables and a result variable.")
+                return
+            v1 = float(variables.get(tokens[1]))
+            v2 = float(variables.get(tokens[2]))
+            variables.set(tokens[3], v1 - v2)
+            print(f"{tokens[3]} = {v1 - v2}")
+        elif command == "mul":
+            if len(tokens) < 4:
+                print("[Error] 'mul' requires two variables and a result variable.")
+                return
+            v1 = float(variables.get(tokens[1]))
+            v2 = float(variables.get(tokens[2]))
+            variables.set(tokens[3], v1 * v2)
+            print(f"{tokens[3]} = {v1 * v2}")
+        elif command == "div":
+            if len(tokens) < 4:
+                print("[Error] 'div' requires two variables and a result variable.")
+                return
+            v1 = float(variables.get(tokens[1]))
+            v2 = float(variables.get(tokens[2]))
+            if v2 == 0:
+                print("[Error] Division by zero.")
+                return
+            variables.set(tokens[3], v1 / v2)
+            print(f"{tokens[3]} = {v1 / v2}")
+
+        # String
+        elif command == "concat":
+            # Syntax: concat <var1> <var2> <resultvar>
+            if len(tokens) < 4:
+                print("[Error] 'concat' requires two variables and a result variable.")
+                return
+            v1 = str(variables.get(tokens[1]))
+            v2 = str(variables.get(tokens[2]))
+            variables.set(tokens[3], v1 + v2)
+            print(f"{tokens[3]} = {v1 + v2}")
+
+        # Print
+        elif command == "print":
+            # Syntax: print <var>
+            if len(tokens) < 2:
+                print("[Error] 'print' requires a variable name or value.")
+                return
+            val = variables.get(tokens[1])
+            if val is None:
+                val = tokens[1]
+            print(val)
+
+        # Control
+        elif command == "break":
+            print("[Break] (no-op in top-level)")
+        elif command == "continue":
+            print("[Continue] (no-op in top-level)")
+        elif command == "pause":
+            input("[Pause] Press Enter to continue...")
+
+        # Utility
+        elif command == "help":
+            print("Supported commands: stack, heap, var, getvar, delvar, vars, clearvars, if, while, list, append, pop, add, sub, mul, div, concat, print, break, continue, pause, stdlib")
+        elif command == "exit" or command == "quit":
+            print("Exiting interpreter.")
+            exit(0)
+
+        # Stdlib
+        elif command == "stdlib":
+            if len(tokens) < 2:
+                print("[Error] 'stdlib' requires a function name.")
+                return
+            fn = tokens[1]
+            args = [eval(arg) for arg in tokens[2:]]
+            if hasattr(T, fn):
+                result = getattr(T, fn)(*args)
+                print(f"Result of {fn}:", result)
+            else:
+                print(f"Function {fn} not found in stdlib")
+
+        else:
+            print(f"[Error] Unknown command: {command}")
+    except Exception as e:
+        print(f"[Interpreter Error] {type(e).__name__}: {e}")
+
+# ... [rest of the file, including extensions and code generator, remains unchanged] ...
+
+# --- Stack Implementation ---
+class Stack:
+    def __init__(self):
+        self.stack = []
+        self.lock = threading.Lock()
+    def push(self, value):
+        with self.lock:
+            self.stack.append(value)
+            self.display()
+    def pop(self):
+        with self.lock:
+            if not self.stack:
+                print("[Stack] Underflow error: stack is empty.")
+                return None
+            value = self.stack.pop()
+            self.display()
+            return value
+    def peek(self):
+        with self.lock:
+            if not self.stack:
+                print("[Stack] Underflow error: stack is empty.")
+                return None
+            return self.stack[-1]
+
+        def clear(self):
+            with self.lock:
+                self.stack.clear()
+            self.display()
+
+            def size(self):
+                with self.lock:
+                    return len(self.stack)
+                def display(self):
+                    print("\n[STACK]")
+
+                    for i, v in enumerate(reversed(self.stack)):
+                        print(f"{i}: {v}")
+                        print("-" * 20)
+
