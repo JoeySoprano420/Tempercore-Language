@@ -3244,3 +3244,59 @@ if __name__ == "__main__":
     total = parallel_sum(arrays, features)
     print("Parallel sum result:", total)
 
+from llvmlite import ir, binding
+
+class LLVMJIT:
+    # ... (existing __init__ and methods) ...
+
+    def add_vector_mul_function(self, vector_width=8):
+        float_ty = ir.FloatType()
+        vec_ty = ir.VectorType(float_ty, vector_width)
+        func_ty = ir.FunctionType(vec_ty, [vec_ty, vec_ty])
+        func = ir.Function(self.module, func_ty, name="vec_mul")
+        a, b = func.args
+        block = func.append_basic_block(name="entry")
+        builder = ir.IRBuilder(block)
+        result = builder.fmul(a, b, name="multmp")
+        builder.ret(result)
+        return func
+
+    def add_fma_function(self, vector_width=8):
+        float_ty = ir.FloatType()
+        vec_ty = ir.VectorType(float_ty, vector_width)
+        func_ty = ir.FunctionType(vec_ty, [vec_ty, vec_ty, vec_ty])
+        func = ir.Function(self.module, func_ty, name="vec_fma")
+        a, b, c = func.args
+        block = func.append_basic_block(name="entry")
+        builder = ir.IRBuilder(block)
+        # Fused multiply-add: (a * b) + c
+        result = builder.fadd(builder.fmul(a, b), c, name="fmatmp")
+        builder.ret(result)
+        return func
+
+    # Add more outrageously optimized vectorized/JIT functions as needed
+
+# Usage in your interpreter:
+if __name__ == "__main__":
+    features = detect_cpu_features()
+    if LLVM_AVAILABLE:
+        jit = LLVMJIT()
+        jit.add_vector_add_function(vector_width=16 if features["avx512"] else 8)
+        jit.add_vector_mul_function(vector_width=16 if features["avx512"] else 8)
+        jit.add_fma_function(vector_width=16 if features["avx512"] else 8)
+        # ... compile and run as needed ...
+
+class SIMDExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "simd":
+            if tokens[1] == "add":
+                # simd add <var1> <var2> <resultvar>
+                a = np.array(variables.get(tokens[2]), dtype=np.float32)
+                b = np.array(variables.get(tokens[3]), dtype=np.float32)
+                result = supreme_vector_add(a, b, features)
+                variables.set(tokens[4], result.tolist())
+                print(f"{tokens[4]} =", result)
+                return True
+            # ... more SIMD ops ...
+        return False
+
