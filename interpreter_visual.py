@@ -3454,3 +3454,12 @@ def run_tempercore_command(cmd):
         print(f"[Interpreter Error] {type(e).__name__}: {e}")
         traceback.print_exc()
 
+def generate_vector_mul(self, dest, src1, src2):
+    # AVX: vmulps ymm_dest, ymm_src1, ymm_src2
+    self.emit(f"    vmulps {dest}, {src1}, {src2}")
+
+def generate_fma(self, dest, src1, src2, src3):
+
+    # AVX: vfmadd231ps ymm_dest, ymm_src1, ymm_src2 (dest = src1 * src2 + dest)
+    self.emit(f"    vfmadd231ps {dest}, {src1}, {src2}")
+
