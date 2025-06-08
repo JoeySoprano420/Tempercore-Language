@@ -2373,3 +2373,342 @@ class Stack:
                         print(f"{i}: {v}")
                         print("-" * 20)
 
+import threading
+import socket
+import http.server
+import socketserver
+import requests
+import tkinter as tk
+import queue
+import time
+import ctypes
+import sys
+from stdlib import TempercoreStdLib as T
+
+# --- Stack Implementation (unchanged) ---
+class Stack:
+    def __init__(self):
+        self.stack = []
+        self.lock = threading.Lock()
+
+    def push(self, val):
+        with self.lock:
+            self.stack.append(val)
+            self.display()
+
+    def pop(self):
+        with self.lock:
+            val = self.stack.pop() if self.stack else None
+            self.display()
+            return val
+
+    def peek(self):
+        with self.lock:
+            return self.stack[-1] if self.stack else None
+
+    def clear(self):
+        with self.lock:
+            self.stack.clear()
+            self.display()
+
+    def size(self):
+        with self.lock:
+            return len(self.stack)
+
+    def display(self):
+        print("\n[STACK]")
+        for i, item in enumerate(reversed(self.stack)):
+            print(f"{len(self.stack) - i}: {item}")
+        print("-" * 20)
+
+# --- Heap with Memory Optimization and Concurrency ---
+class Heap:
+    def __init__(self, max_size=1024 * 1024 * 10):  # 10MB default
+        self.heap = {}
+        self.lock = threading.RLock()
+        self.max_size = max_size
+        self.used = 0
+        self.alloc_map = {}  # name: size
+
+    def allocate(self, name, value):
+        with self.lock:
+            size = sys.getsizeof(value)
+            if self.used + size > self.max_size:
+                print(f"[Heap] Allocation failed: Not enough memory for '{name}' ({size} bytes).")
+                return
+            if name in self.heap:
+                self.used -= self.alloc_map[name]
+            self.heap[name] = value
+            self.alloc_map[name] = size
+            self.used += size
+            self.display()
+
+    def retrieve(self, name):
+        with self.lock:
+            return self.heap.get(name, None)
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.heap:
+                self.used -= self.alloc_map[name]
+                del self.heap[name]
+                del self.alloc_map[name]
+                self.display()
+
+    def clear(self):
+        with self.lock:
+            self.heap.clear()
+            self.alloc_map.clear()
+            self.used = 0
+            self.display()
+
+    def keys(self):
+        with self.lock:
+            return list(self.heap.keys())
+
+    def dump(self):
+        with self.lock:
+            return dict(self.heap)
+
+    def memory_usage(self):
+        with self.lock:
+            return self.used, self.max_size
+
+    def display(self):
+        print("\n[HEAP]")
+        for k, v in self.heap.items():
+            print(f"{k} => {v} ({self.alloc_map[k]} bytes)")
+        print(f"Used: {self.used} / {self.max_size} bytes")
+        print("-" * 20)
+
+stack = Stack()
+heap = Heap()
+
+# --- Extension System ---
+class Extension:
+    def handle(self, tokens):
+        raise NotImplementedError
+
+    def help(self):
+        return ""
+
+# --- WebExtension: Real Networking ---
+class WebExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "web":
+            if len(tokens) < 2:
+                print("[Web] Missing subcommand.")
+                return True
+            if tokens[1] == "serve":
+                port = int(tokens[2]) if len(tokens) > 2 else 8080
+                handler = http.server.SimpleHTTPRequestHandler
+                def serve():
+                    with socketserver.TCPServer(("", port), handler) as httpd:
+                        print(f"[Web] Serving HTTP on port {port} (Ctrl+C to stop)...")
+                        try:
+                            httpd.serve_forever()
+                        except KeyboardInterrupt:
+                            print("[Web] Server stopped.")
+                threading.Thread(target=serve, daemon=True).start()
+            elif tokens[1] == "request":
+                if len(tokens) < 3:
+                    print("[Web] 'request' requires a URL.")
+                    return True
+                url = tokens[2]
+                try:
+                    resp = requests.get(url)
+                    print(f"[Web] GET {url} -> {resp.status_code}\n{resp.text[:200]}...")
+                except Exception as e:
+                    print(f"[Web] Request error: {e}")
+            elif tokens[1] == "socket":
+                if len(tokens) < 3:
+                    print("[Web] 'socket' requires a host:port.")
+                    return True
+                host, port = tokens[2].split(":")
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.connect((host, int(port)))
+                    print(f"[Web] Connected to {host}:{port}")
+                    s.close()
+                except Exception as e:
+                    print(f"[Web] Socket error: {e}")
+            else:
+                print("[Web] Unknown web command")
+            return True
+        return False
+    def help(self):
+        return "web serve <port>, web request <url>, web socket <host:port>"
+
+# --- GUIExtension: Real Tkinter UI ---
+class GUIExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "gui":
+            if len(tokens) < 2:
+                print("[GUI] Missing subcommand.")
+                return True
+            if tokens[1] == "window":
+                title = " ".join(tokens[2:]) if len(tokens) > 2 else "Tempercore Window"
+                def show_window():
+                    root = tk.Tk()
+                    root.title(title)
+                    tk.Label(root, text=title).pack()
+                    root.mainloop()
+                threading.Thread(target=show_window, daemon=True).start()
+            elif tokens[1] == "button":
+                label = " ".join(tokens[2:]) if len(tokens) > 2 else "Button"
+                def show_button():
+                    root = tk.Tk()
+                    tk.Button(root, text=label, command=root.destroy).pack()
+                    root.mainloop()
+                threading.Thread(target=show_button, daemon=True).start()
+            elif tokens[1] == "label":
+                text = " ".join(tokens[2:]) if len(tokens) > 2 else "Label"
+                def show_label():
+                    root = tk.Tk()
+                    tk.Label(root, text=text).pack()
+                    root.mainloop()
+                threading.Thread(target=show_label, daemon=True).start()
+            else:
+                print("[GUI] Unknown GUI command")
+            return True
+        return False
+    def help(self):
+        return "gui window <title>, gui button <label>, gui label <text>"
+
+# --- MLExtension: Real ML with scikit-learn (if available) ---
+try:
+    from sklearn.linear_model import LinearRegression
+    import numpy as np
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+class MLExtension(Extension):
+    def __init__(self):
+        self.models = {}
+
+    def handle(self, tokens):
+        if tokens[0] == "ml":
+            if not SKLEARN_AVAILABLE:
+                print("[ML] scikit-learn not available. Install with 'pip install scikit-learn numpy'.")
+                return True
+            if len(tokens) < 2:
+                print("[ML] Missing subcommand.")
+                return True
+            if tokens[1] == "train":
+                # ml train <modelname> <x1,x2,...> <y1,y2,...>
+                if len(tokens) < 5:
+                    print("[ML] Usage: ml train <modelname> <x1,x2,...> <y1,y2,...>")
+                    return True
+                name = tokens[2]
+                X = np.array([[float(x)] for x in tokens[3].split(",")])
+                y = np.array([float(y) for y in tokens[4].split(",")])
+                model = LinearRegression()
+                model.fit(X, y)
+                self.models[name] = model
+                print(f"[ML] Trained model '{name}'")
+            elif tokens[1] == "predict":
+                # ml predict <modelname> <x>
+                if len(tokens) < 4:
+                    print("[ML] Usage: ml predict <modelname> <x>")
+                    return True
+                name = tokens[2]
+                x = float(tokens[3])
+                model = self.models.get(name)
+                if not model:
+                    print(f"[ML] Model '{name}' not found.")
+                    return True
+                pred = model.predict(np.array([[x]]))
+                print(f"[ML] Prediction: {pred[0]}")
+            elif tokens[1] == "evaluate":
+                # ml evaluate <modelname> <x1,x2,...> <y1,y2,...>
+                if len(tokens) < 5:
+                    print("[ML] Usage: ml evaluate <modelname> <x1,x2,...> <y1,y2,...>")
+                    return True
+                name = tokens[2]
+                X = np.array([[float(x)] for x in tokens[3].split(",")])
+                y = np.array([float(y) for y in tokens[4].split(",")])
+                model = self.models.get(name)
+                if not model:
+                    print(f"[ML] Model '{name}' not found.")
+                    return True
+                score = model.score(X, y)
+                print(f"[ML] R^2 score: {score}")
+            else:
+                print("[ML] Unknown ML command")
+            return True
+        return False
+    def help(self):
+        return "ml train <model> <x1,x2,...> <y1,y2,...>, ml predict <model> <x>, ml evaluate <model> <x1,x2,...> <y1,y2,...>"
+
+# --- MobileExtension and GameExtension: Placeholders for real actions ---
+class MobileExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "mobile":
+            if len(tokens) < 2:
+                print("[Mobile] Missing subcommand.")
+                return True
+            if tokens[1] == "build":
+                print("[Mobile] (Placeholder) Real mobile build would require platform SDK integration.")
+            elif tokens[1] == "deploy":
+                print("[Mobile] (Placeholder) Real deployment would require device connection.")
+            else:
+                print("[Mobile] Unknown mobile command")
+            return True
+        return False
+    def help(self):
+        return "mobile build <platform>, mobile deploy <device>"
+
+class GameExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "game":
+            if len(tokens) < 2:
+                print("[Game] Missing subcommand.")
+                return True
+            if tokens[1] == "start":
+                print("[Game] (Placeholder) Real game engine integration not implemented.")
+            elif tokens[1] == "entity":
+                print("[Game] (Placeholder) Real entity creation not implemented.")
+            elif tokens[1] == "event":
+                print("[Game] (Placeholder) Real event system not implemented.")
+            else:
+                print("[Game] Unknown game command")
+            return True
+        return False
+    def help(self):
+        return "game start, game entity <name>, game event <event>"
+
+# --- Register extensions ---
+extensions = [
+    WebExtension(),
+    GUIExtension(),
+    MLExtension(),
+    MobileExtension(),
+    GameExtension(),
+    # ... (other extensions, e.g., MachineCodeExtension) ...
+]
+
+# --- Improved Error Handling in Interpreter ---
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        print("[Error] Empty command.")
+        return
+
+    for ext in extensions:
+        try:
+            if ext.handle(tokens):
+                return
+        except Exception as e:
+            print(f"[Extension Error] {ext.__class__.__name__}: {type(e).__name__}: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        # ... (existing interpreter command handling) ...
+        print(f"[Error] Unknown command: {command}")
+    except Exception as e:
+        import traceback
+        print(f"[Interpreter Error] {type(e).__name__}: {e}")
+        traceback.print_exc()
+
