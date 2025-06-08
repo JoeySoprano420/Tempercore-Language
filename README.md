@@ -36,3 +36,23 @@ Procedural Cascade Flow
 | **Command Mode**      | Fully CLI Controllable / AOT              |
 
 
+🆕 What’s New:
+📚 Use Standard Library
+Now, inside .tpc files you can write:
+
+tempercore
+Copy
+Edit
+use stdlib
+
+function test:
+    let result = T.factorial(6)
+    print result
+And the compiler will:
+
+✅ Inject from stdlib import TempercoreStdLib as T
+
+✅ Compile it into valid Python
+
+✅ Preserve compatibility with non-stdlib scripts
+
