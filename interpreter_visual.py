@@ -3554,3 +3554,89 @@ libc = ctypes.CDLL("libc.so.6")
 def direct_exit(status):
     libc.syscall(60, status)  # 60 is SYS_exit on x86-64
 
+import queue
+
+class LockFreeStack:
+    def __init__(self):
+        self.q = queue.SimpleQueue()
+
+    def push(self, value):
+        self.q.put(value)
+
+    def pop(self):
+        try:
+            return self.q.get_nowait()
+        except queue.Empty:
+            return None
+
+import numpy as np
+
+def simd_add(a, b):
+    # a, b: numpy arrays of dtype float32
+    return np.add(a, b)
+
+class CodeGenerator:
+    def generate_vector_add(self, dest, src1, src2):
+        # AVX2: vaddps ymm_dest, ymm_src1, ymm_src2
+        self.emit(f"    vaddps {dest}, {src1}, {src2}")
+
+class RegisterAllocator:
+    def __init__(self):
+        self.registers = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+
+    def alloc(self):
+        if not self.free:
+            raise RuntimeError("No free registers")
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+
+def generate_add(self):
+    reg1 = self.reg_alloc.alloc()
+    reg2 = self.reg_alloc.alloc()
+    self.emit(f"    pop {reg1}")
+    self.emit(f"    pop {reg2}")
+    self.emit(f"    add {reg1}, {reg2}")
+    self.emit(f"    push {reg1}")
+    self.reg_alloc.free_reg(reg1)
+    self.reg_alloc.free_reg(reg2)
+
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if tokens[0] == "vector_add":
+        a = np.array(variables.get(tokens[1]), dtype=np.float32)
+        b = np.array(variables.get(tokens[2]), dtype=np.float32)
+        result = simd_add(a, b)
+        variables.set(tokens[3], result.tolist())
+        print(f"{tokens[3]} = {result}")
+
+class MemoryPool:
+    def __init__(self, block_size=4096, pool_size=1024*1024*10):
+        self.block_size = block_size
+        self.pool_size = pool_size
+        self.pool = bytearray(pool_size)
+        self.free_blocks = list(range(0, pool_size, block_size))
+        self.lock = threading.Lock()
+        self.alloc_map = {}
+
+    def allocate(self, name, size):
+        with self.lock:
+            if not self.free_blocks:
+                raise MemoryError("Out of memory in pool")
+            block = self.free_blocks.pop()
+            self.alloc_map[name] = (block, size)
+            return memoryview(self.pool)[block:block+size]
+
+    def free(self, name):
+        with self.lock:
+            if name in self.alloc_map:
+                block, _ = self.alloc_map.pop(name)
+                self.free_blocks.append(block)
+
