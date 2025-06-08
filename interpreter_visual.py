@@ -3687,3 +3687,6 @@ class LockFreeStack:
         except queue.Empty:
             return None
 
+def generate_simd_add(self):
+    self.emit("vaddps ymm0, ymm1, ymm2")
+
