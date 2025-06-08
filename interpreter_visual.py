@@ -174,27 +174,149 @@ class GameExtension(Extension):
     def help(self):
         return "game start, game entity <name>, game event <event>"
 
-class Concurrency:
+# --- Machine Code Generation ---
+class CodeGenerator:
     def __init__(self):
-        self.extensions = [
-            WebExtension(),
-            GUIExtension(),
-            MLExtension(),
-            MobileExtension(),
-            GameExtension()
-        ]
+        self.instructions = []
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_stack_push(self, value):
+        # Simulate pushing a value onto the stack (x86-64)
+        self.emit(f"    ; push {value}")
+        self.emit(f"    mov rax, {value}")
+        self.emit(f"    push rax")
+
+    def generate_stack_pop(self):
+        self.emit("    ; pop")
+        self.emit("    pop rax")
+
+    def generate_print(self):
+        self.emit("    ; print (simulated, would require syscall in real code)")
+
+    def output(self):
+        # Output as x86-64 assembly (for demonstration)
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    ; exit (simulated)",
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+class MachineCodeExtension(Extension):
     def handle(self, tokens):
-        for ext in self.extensions:
-            if ext.handle(tokens):
-                return True
+        if tokens[0] == "compile":
+            # Example: compile stack push 42 stack pop
+            codegen = CodeGenerator()
+            i = 1
+            while i < len(tokens):
+                if tokens[i] == "stack" and i+2 < len(tokens) and tokens[i+1] == "push":
+                    codegen.generate_stack_push(tokens[i+2])
+                    i += 3
+                elif tokens[i] == "stack" and i+1 < len(tokens) and tokens[i+1] == "pop":
+                    codegen.generate_stack_pop()
+                    i += 2
+                elif tokens[i] == "print":
+                    codegen.generate_print()
+                    i += 1
+                else:
+                    print(f"[MachineCode] Unknown or unsupported command: {' '.join(tokens[i:i+3])}")
+                    i += 1
+            print("\n[Generated x86-64 Assembly]:\n")
+            print(codegen.output())
+            return True
         return False
     def help(self):
-        return "\n".join(ext.help() for ext in self.extensions)
+        return "compile <commands...>   # Outputs x86-64 assembly for supported commands"
 
-import threading
+# Register extensions
+extensions = [
+    WebExtension(),
+    GUIExtension(),
+    MLExtension(),
+    MobileExtension(),
+    GameExtension(),
+    MachineCodeExtension(),  # Add the machine code extension
+]
+
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        return
+
+    # Try extensions first
+    for ext in extensions:
+        try:
+            if ext.handle(tokens):
+                return
+        except Exception as e:
+            print(f"[{ext.__class__.__name__}] Error: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        if command == "stack":
+            if tokens[1] == "push":
+                value = " ".join(tokens[2:])
+                stack.push(value)
+            elif tokens[1] == "pop":
+                print("Popped:", stack.pop())
+            elif tokens[1] == "peek":
+                print("Top of stack:", stack.peek())
+            elif tokens[1] == "clear":
+                stack.clear()
+            elif tokens[1] == "size":
+                print("Stack size:", stack.size())
+            else:
+                print("[Stack] Unknown stack command")
+        elif command == "heap":
+            action = tokens[1]
+            if action == "allocate":
+                name = tokens[2]
+                value = " ".join(tokens[3:])
+                heap.allocate(name, value)
+            elif action == "get":
+                name = tokens[2]
+                print(f"{name} =", heap.retrieve(name))
+            elif action == "delete":
+                heap.delete(tokens[2])
+            elif action == "dump":
+                print(heap.dump())
+            elif action == "clear":
+                heap.clear()
+            elif action == "keys":
+                print("Heap keys:", heap.keys())
+            else:
+                print("[Heap] Unknown heap command")
+        elif command == "stdlib":
+            fn = tokens[1]
+            args = [eval(arg) for arg in tokens[2:]]
+            if hasattr(T, fn):
+                result = getattr(T, fn)(*args)
+                print(f"Result of {fn}:", result)
+            else:
+                print(f"Function {fn} not found in stdlib")
+        else:
+            print(f"Unknown command: {cmd}")
+    except Exception as e:
+        print(f"[Interpreter] Error: {e}")
+
+        import threading
+import ctypes
+import mmap
 from stdlib import TempercoreStdLib as T
 
-# ------------------ STACK ------------------
+try:
+    from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+    KEYSTONE_AVAILABLE = True
+except ImportError:
+    KEYSTONE_AVAILABLE = False
+
 class Stack:
     def __init__(self):
         self.stack = []
@@ -224,7 +346,6 @@ class Stack:
             print(f"{len(self.stack) - i}: {item}")
         print("-" * 20)
 
-# ------------------ HEAP ------------------
 class Heap:
     def __init__(self):
         self.heap = {}
@@ -264,26 +385,30 @@ class Heap:
             print(f"{k} => {v}")
         print("-" * 20)
 
-# ------------------ EXTENSION SYSTEM ------------------
+stack = Stack()
+heap = Heap()
+
+# --- Extension System ---
 class Extension:
     def handle(self, tokens):
         raise NotImplementedError
+
     def help(self):
         return ""
 
+# --- Existing Extensions (Web, GUI, ML, etc.) ---
 class WebExtension(Extension):
     def handle(self, tokens):
         if tokens[0] == "web":
             if len(tokens) < 2:
                 print("[Web] Missing subcommand.")
                 return True
-            cmd = tokens[1]
-            if cmd == "serve":
-                print(f"[Web] Simulating web server at {tokens[2] if len(tokens) > 2 else '<missing address>'}")
-            elif cmd == "request":
-                print(f"[Web] Simulating HTTP request to {tokens[2] if len(tokens) > 2 else '<missing url>'}")
-            elif cmd == "socket":
-                print(f"[Web] Simulating websocket connection to {tokens[2] if len(tokens) > 2 else '<missing url>'}")
+            if tokens[1] == "serve":
+                print("[Web] Simulating web server at", tokens[2] if len(tokens) > 2 else "<missing address>")
+            elif tokens[1] == "request":
+                print("[Web] Simulating HTTP request to", tokens[2] if len(tokens) > 2 else "<missing url>")
+            elif tokens[1] == "socket":
+                print("[Web] Simulating websocket connection to", tokens[2] if len(tokens) > 2 else "<missing url>")
             else:
                 print("[Web] Unknown web command")
             return True
@@ -297,14 +422,12 @@ class GUIExtension(Extension):
             if len(tokens) < 2:
                 print("[GUI] Missing subcommand.")
                 return True
-            cmd = tokens[1]
-            rest = " ".join(tokens[2:])
-            if cmd == "window":
-                print(f"[GUI] Simulating window with title: {rest}")
-            elif cmd == "button":
-                print(f"[GUI] Simulating button: {rest}")
-            elif cmd == "label":
-                print(f"[GUI] Simulating label: {rest}")
+            if tokens[1] == "window":
+                print("[GUI] Simulating window with title:", " ".join(tokens[2:]))
+            elif tokens[1] == "button":
+                print("[GUI] Simulating button:", " ".join(tokens[2:]))
+            elif tokens[1] == "label":
+                print("[GUI] Simulating label:", " ".join(tokens[2:]))
             else:
                 print("[GUI] Unknown GUI command")
             return True
@@ -318,13 +441,12 @@ class MLExtension(Extension):
             if len(tokens) < 2:
                 print("[ML] Missing subcommand.")
                 return True
-            cmd = tokens[1]
-            if cmd == "train":
-                print(f"[ML] Simulating model training on data: {tokens[2] if len(tokens) > 2 else '<missing data>'}")
-            elif cmd == "predict":
-                print(f"[ML] Simulating prediction for input: {tokens[2] if len(tokens) > 2 else '<missing input>'}")
-            elif cmd == "evaluate":
-                print(f"[ML] Simulating model evaluation on: {tokens[2] if len(tokens) > 2 else '<missing data>'}")
+            if tokens[1] == "train":
+                print("[ML] Simulating model training on data:", tokens[2] if len(tokens) > 2 else "<missing data>")
+            elif tokens[1] == "predict":
+                print("[ML] Simulating prediction for input:", tokens[2] if len(tokens) > 2 else "<missing input>")
+            elif tokens[1] == "evaluate":
+                print("[ML] Simulating model evaluation on:", tokens[2] if len(tokens) > 2 else "<missing data>")
             else:
                 print("[ML] Unknown ML command")
             return True
@@ -338,11 +460,10 @@ class MobileExtension(Extension):
             if len(tokens) < 2:
                 print("[Mobile] Missing subcommand.")
                 return True
-            cmd = tokens[1]
-            if cmd == "build":
-                print(f"[Mobile] Simulating mobile app build for: {tokens[2] if len(tokens) > 2 else '<missing platform>'}")
-            elif cmd == "deploy":
-                print(f"[Mobile] Simulating deployment to: {tokens[2] if len(tokens) > 2 else '<missing device>'}")
+            if tokens[1] == "build":
+                print("[Mobile] Simulating mobile app build for platform:", tokens[2] if len(tokens) > 2 else "<missing platform>")
+            elif tokens[1] == "deploy":
+                print("[Mobile] Simulating mobile app deployment to:", tokens[2] if len(tokens) > 2 else "<missing device>")
             else:
                 print("[Mobile] Unknown mobile command")
             return True
@@ -356,14 +477,12 @@ class GameExtension(Extension):
             if len(tokens) < 2:
                 print("[Game] Missing subcommand.")
                 return True
-            cmd = tokens[1]
-            rest = " ".join(tokens[2:])
-            if cmd == "start":
+            if tokens[1] == "start":
                 print("[Game] Simulating game engine start")
-            elif cmd == "entity":
-                print(f"[Game] Simulating entity creation: {rest}")
-            elif cmd == "event":
-                print(f"[Game] Simulating game event: {rest}")
+            elif tokens[1] == "entity":
+                print("[Game] Simulating entity creation:", " ".join(tokens[2:]))
+            elif tokens[1] == "event":
+                print("[Game] Simulating game event:", " ".join(tokens[2:]))
             else:
                 print("[Game] Unknown game command")
             return True
@@ -371,90 +490,170 @@ class GameExtension(Extension):
     def help(self):
         return "game start, game entity <name>, game event <event>"
 
-class Concurrency:
+# --- Machine Code Generation ---
+class CodeGenerator:
     def __init__(self):
-        self.extensions = [
-            WebExtension(),
-            GUIExtension(),
-            MLExtension(),
-            MobileExtension(),
-            GameExtension()
-        ]
+        self.instructions = []
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_stack_push(self, value):
+        self.emit(f"    mov rax, {value}")
+        self.emit(f"    push rax")
+
+    def generate_stack_pop(self):
+        self.emit("    pop rax")
+
+    def generate_print(self):
+        # This is a placeholder; real print would require syscall and buffer setup
+        self.emit("    ; print (not implemented)")
+
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+    def output_bytes(self):
+        # Returns the instructions as a single string for Keystone
+        return "\n".join(self.instructions)
+
+class MachineCodeExtension(Extension):
     def handle(self, tokens):
-        for ext in self.extensions:
-            if ext.handle(tokens):
+        if tokens[0] == "compile":
+            codegen = CodeGenerator()
+            i = 1
+            while i < len(tokens):
+                if tokens[i] == "stack" and i+2 < len(tokens) and tokens[i+1] == "push":
+                    codegen.generate_stack_push(tokens[i+2])
+                    i += 3
+                elif tokens[i] == "stack" and i+1 < len(tokens) and tokens[i+1] == "pop":
+                    codegen.generate_stack_pop()
+                    i += 2
+                elif tokens[i] == "print":
+                    codegen.generate_print()
+                    i += 1
+                else:
+                    print(f"[MachineCode] Unknown or unsupported command: {' '.join(tokens[i:i+3])}")
+                    i += 1
+
+            print("\n[Generated x86-64 Assembly]:\n")
+            asm = codegen.output()
+            print(asm)
+
+            if not KEYSTONE_AVAILABLE:
+                print("\n[Keystone] Keystone assembler not available. Install with 'pip install keystone-engine'.")
                 return True
+
+            # --- Keystone AOT Compilation ---
+            try:
+                ks = Ks(KS_ARCH_X86, KS_MODE_64)
+                encoding, count = ks.asm(asm)
+                machine_code = bytes(encoding)
+                print("\n[Keystone] Machine code (hex):")
+                print(machine_code.hex())
+            except Exception as e:
+                print(f"[Keystone] Assembly error: {e}")
+                return True
+
+            # --- JIT Execution using mmap and ctypes ---
+            try:
+                # Allocate RWX memory
+                size = len(machine_code)
+                mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+                mm.write(machine_code)
+                # Move pointer to start
+                mm.seek(0)
+                # Get function pointer
+                FUNC_TYPE = ctypes.CFUNCTYPE(None)
+                address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+                func = FUNC_TYPE(address)
+                print("\n[JIT] Executing machine code (may not print output, but will exit):")
+                func()
+                mm.close()
+            except Exception as e:
+                print(f"[JIT] Execution error: {e}")
+            return True
         return False
+
     def help(self):
-        return "\n".join(ext.help() for ext in self.extensions)
+        return "compile <commands...>   # Outputs x86-64 assembly, machine code, and JIT executes (if possible)"
 
-# ------------------ INTERPRETER ------------------
-stack = Stack()
-heap = Heap()
-ext = Concurrency()
-stdlib = T()
+# Register extensions
+extensions = [
+    WebExtension(),
+    GUIExtension(),
+    MLExtension(),
+    MobileExtension(),
+    GameExtension(),
+    MachineCodeExtension(),
+]
 
-def run_command(line):
-    tokens = line.strip().split()
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
     if not tokens:
         return
-    cmd = tokens[0]
 
-    # --- Extension Hook ---
-    if ext.handle(tokens):
-        return
-
-    # --- Stack Commands ---
-    if cmd == "push":
-        val = " ".join(tokens[1:])
-        stack.push(val)
-    elif cmd == "pop":
-        print("Popped:", stack.pop())
-    elif cmd == "peek":
-        print("Top:", stack.peek())
-    elif cmd == "clear":
-        stack.clear()
-
-    # --- Heap Commands ---
-    elif cmd == "alloc":
-        if len(tokens) >= 3:
-            heap.allocate(tokens[1], " ".join(tokens[2:]))
-        else:
-            print("Usage: alloc <name> <value>")
-    elif cmd == "get":
-        print(heap.retrieve(tokens[1]) if len(tokens) > 1 else "Usage: get <name>")
-    elif cmd == "del":
-        heap.delete(tokens[1] if len(tokens) > 1 else "")
-    elif cmd == "hclear":
-        heap.clear()
-    elif cmd == "hdump":
-        print(heap.dump())
-
-    # --- Stdlib Hooks ---
-    elif cmd == "std":
-        result = stdlib.execute(tokens[1:])
-        if result is not None:
-            print("[STDLIB]", result)
-
-    # --- Help ---
-    elif cmd == "help":
-        print("[Built-in] push/pop/peek/clear, alloc/get/del/hclear/hdump")
-        print("[Stdlib] std <function> <args...>")
-        print("[Extensions]")
-        print(ext.help())
-
-    else:
-        print("Unknown command:", cmd)
-
-# ------------------ MAIN LOOP ------------------
-if __name__ == "__main__":
-    print("Tempercore Interpreter 🔥")
-    print("Type 'help' for command list.")
-    while True:
+    # Try extensions first
+    for ext in extensions:
         try:
-            line = input(">> ").strip()
-            if line in {"exit", "quit"}:
-                break
-            run_command(line)
+            if ext.handle(tokens):
+                return
         except Exception as e:
-            print("Error:", e)
+            print(f"[{ext.__class__.__name__}] Error: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        if command == "stack":
+            if tokens[1] == "push":
+                value = " ".join(tokens[2:])
+                stack.push(value)
+            elif tokens[1] == "pop":
+                print("Popped:", stack.pop())
+            elif tokens[1] == "peek":
+                print("Top of stack:", stack.peek())
+            elif tokens[1] == "clear":
+                stack.clear()
+            elif tokens[1] == "size":
+                print("Stack size:", stack.size())
+            else:
+                print("[Stack] Unknown stack command")
+        elif command == "heap":
+            action = tokens[1]
+            if action == "allocate":
+                name = tokens[2]
+                value = " ".join(tokens[3:])
+                heap.allocate(name, value)
+            elif action == "get":
+                name = tokens[2]
+                print(f"{name} =", heap.retrieve(name))
+            elif action == "delete":
+                heap.delete(tokens[2])
+            elif action == "dump":
+                print(heap.dump())
+            elif action == "clear":
+                heap.clear()
+            elif action == "keys":
+                print("Heap keys:", heap.keys())
+            else:
+                print("[Heap] Unknown heap command")
+        elif command == "stdlib":
+            fn = tokens[1]
+            args = [eval(arg) for arg in tokens[2:]]
+            if hasattr(T, fn):
+                result = getattr(T, fn)(*args)
+                print(f"Result of {fn}:", result)
+            else:
+                print(f"Function {fn} not found in stdlib")
+        else:
+            print(f"Unknown command: {cmd}")
+    except Exception as e:
+        print(f"[Interpreter] Error: {e}")
+
