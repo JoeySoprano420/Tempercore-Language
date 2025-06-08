@@ -3300,3 +3300,157 @@ class SIMDExtension(Extension):
             # ... more SIMD ops ...
         return False
 
+    import numpy as np
+import multiprocessing as mp
+import asyncio
+import time
+
+# Assume SupremeAllocator, supreme_vector_add, parallel_sum, detect_cpu_features, variables, and extensions are defined
+
+supreme_allocator = SupremeAllocator()
+features = detect_cpu_features()
+
+def _ensure_list(var):
+    val = variables.get(var)
+    if not isinstance(val, list):
+        raise ValueError(f"Variable '{var}' is not a list/array.")
+    return val
+
+def _ensure_array(val, dtype=np.float32):
+    arr = np.array(val, dtype=dtype)
+    if arr.ndim == 0:
+        arr = arr.reshape(1)
+    return arr
+
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        print("[Error] Empty command.")
+        return
+
+    # Try extensions first
+    for ext in extensions:
+        try:
+            if ext.handle(tokens):
+                return
+        except Exception as e:
+            print(f"[Extension Error] {ext.__class__.__name__}: {type(e).__name__}: {e}")
+            return
+
+    command = tokens[0]
+    try:
+        # --- SIMD Vector Add ---
+        if command == "vector_add":
+            # vector_add <var1> <var2> <resultvar>
+            if len(tokens) != 4:
+                print("[Error] Usage: vector_add <var1> <var2> <resultvar>")
+                return
+            a = _ensure_array(variables.get(tokens[1]))
+            b = _ensure_array(variables.get(tokens[2]))
+            if a.shape != b.shape:
+                print("[Error] Arrays must have the same shape.")
+                return
+            t0 = time.perf_counter()
+            result = supreme_vector_add(a, b, features)
+            t1 = time.perf_counter()
+            variables.set(tokens[3], result.tolist())
+            print(f"{tokens[3]} = {result} [SIMD add in {t1-t0:.6f}s]")
+
+        # --- SIMD Vector Multiply ---
+        elif command == "vector_mul":
+            # vector_mul <var1> <var2> <resultvar>
+            if len(tokens) != 4:
+                print("[Error] Usage: vector_mul <var1> <var2> <resultvar>")
+                return
+            a = _ensure_array(variables.get(tokens[1]))
+            b = _ensure_array(variables.get(tokens[2]))
+            if a.shape != b.shape:
+                print("[Error] Arrays must have the same shape.")
+                return
+            t0 = time.perf_counter()
+            result = np.multiply(a, b)
+            t1 = time.perf_counter()
+            variables.set(tokens[3], result.tolist())
+            print(f"{tokens[3]} = {result} [SIMD mul in {t1-t0:.6f}s]")
+
+        # --- SIMD Fused Multiply-Add (FMA) ---
+        elif command == "vector_fma":
+            # vector_fma <var1> <var2> <var3> <resultvar>
+            if len(tokens) != 5:
+                print("[Error] Usage: vector_fma <var1> <var2> <var3> <resultvar>")
+                return
+            a = _ensure_array(variables.get(tokens[1]))
+            b = _ensure_array(variables.get(tokens[2]))
+            c = _ensure_array(variables.get(tokens[3]))
+            if not (a.shape == b.shape == c.shape):
+                print("[Error] All arrays must have the same shape.")
+                return
+            t0 = time.perf_counter()
+            result = np.add(np.multiply(a, b), c)
+            t1 = time.perf_counter()
+            variables.set(tokens[4], result.tolist())
+            print(f"{tokens[4]} = {result} [SIMD FMA in {t1-t0:.6f}s]")
+
+        # --- Parallel Sum ---
+        elif command == "parallel_sum":
+            # parallel_sum <listvar> <resultvar>
+            if len(tokens) != 3:
+                print("[Error] Usage: parallel_sum <listvar> <resultvar>")
+                return
+            arrays = [_ensure_array(x) for x in _ensure_list(tokens[1])]
+            t0 = time.perf_counter()
+            result = parallel_sum(arrays, features)
+            t1 = time.perf_counter()
+            variables.set(tokens[2], float(result))
+            print(f"{tokens[2]} = {result} [Parallel sum in {t1-t0:.6f}s]")
+
+        # --- SupremeAllocator: Alloc/Free/Status ---
+        elif command == "alloc":
+            # alloc <name> <size>
+            if len(tokens) != 3:
+                print("[Error] Usage: alloc <name> <size>")
+                return
+            name = tokens[1]
+            size = int(tokens[2])
+            try:
+                buf = supreme_allocator.allocate(name, size)
+                print(f"Allocated {size} bytes for '{name}'.")
+            except Exception as e:
+                print(f"[Allocator Error] {e}")
+
+        elif command == "free":
+            # free <name>
+            if len(tokens) != 2:
+                print("[Error] Usage: free <name>")
+                return
+            name = tokens[1]
+            try:
+                supreme_allocator.free_alloc(name)
+                print(f"Freed buffer '{name}'.")
+            except Exception as e:
+                print(f"[Allocator Error] {e}")
+
+        elif command == "alloc_status":
+            # alloc_status
+            print(f"Allocator status: {len(supreme_allocator.allocs)} allocations, {len(supreme_allocator.free)} free blocks.")
+
+        # --- Async Example (future extensibility) ---
+        elif command == "async_vector_add":
+            # async_vector_add <var1> <var2> <resultvar>
+            async def async_add():
+                a = _ensure_array(variables.get(tokens[1]))
+                b = _ensure_array(variables.get(tokens[2]))
+                await asyncio.sleep(0)  # Simulate async
+                result = supreme_vector_add(a, b, features)
+                variables.set(tokens[3], result.tolist())
+                print(f"{tokens[3]} = {result} [Async SIMD add]")
+            asyncio.run(async_add())
+
+        else:
+            print(f"[Error] Unknown command: {command}")
+
+    except Exception as e:
+        import traceback
+        print(f"[Interpreter Error] {type(e).__name__}: {e}")
+        traceback.print_exc()
+
