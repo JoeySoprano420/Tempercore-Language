@@ -3463,3 +3463,94 @@ def generate_fma(self, dest, src1, src2, src3):
     # AVX: vfmadd231ps ymm_dest, ymm_src1, ymm_src2 (dest = src1 * src2 + dest)
     self.emit(f"    vfmadd231ps {dest}, {src1}, {src2}")
 
+import threading
+import ctypes
+from typing import Optional
+
+class LockFreeNode(ctypes.Structure):
+    pass
+
+LockFreeNode._fields_ = [("value", ctypes.py_object), ("next", ctypes.POINTER(LockFreeNode))]
+
+class LockFreeStack:
+    def __init__(self):
+        self.top = ctypes.POINTER(LockFreeNode)()
+        self.lock = threading.Lock()  # Fallback for GIL, but not used for atomic ops
+
+    def push(self, value):
+        node = LockFreeNode()
+        node.value = value
+        while True:
+            old_top = self.top
+            node.next = old_top
+            if ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(id(self.top)), ctypes.py_object(node)):
+                self.top = ctypes.pointer(node)
+                break
+
+    def pop(self) -> Optional[object]:
+        while True:
+            old_top = self.top
+            if not old_top:
+                return None
+            next_node = old_top.contents.next
+            if ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(id(self.top)), next_node):
+                self.top = next_node
+                return old_top.contents.value
+
+class CodeGenerator:
+    # ...
+    def generate_vector_add(self, dest, src1, src2):
+        # AVX2: vaddps ymm_dest, ymm_src1, ymm_src2
+        self.emit(f"    vaddps {dest}, {src1}, {src2}")
+
+    def generate_vector_mul(self, dest, src1, src2):
+        # AVX2: vmulps ymm_dest, ymm_src1, ymm_src2
+        self.emit(f"    vmulps {dest}, {src1}, {src2}")
+
+class RegisterAllocator:
+    def __init__(self):
+        self.registers = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+
+    def alloc(self):
+        if not self.free:
+            raise RuntimeError("No free registers")
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+
+class MemoryPool:
+    def __init__(self, block_size=4096, pool_size=1024*1024*10):
+        self.block_size = block_size
+        self.pool_size = pool_size
+        self.pool = bytearray(pool_size)
+        self.free_blocks = list(range(0, pool_size, block_size))
+        self.lock = threading.Lock()
+        self.alloc_map = {}
+
+    def allocate(self, name, size):
+        with self.lock:
+            if not self.free_blocks:
+                raise MemoryError("Out of memory in pool")
+            block = self.free_blocks.pop()
+            self.alloc_map[name] = (block, size)
+            return memoryview(self.pool)[block:block+size]
+
+    def free(self, name):
+        with self.lock:
+            if name in self.alloc_map:
+                block, _ = self.alloc_map.pop(name)
+                self.free_blocks.append(block)
+
+import ctypes
+
+libc = ctypes.CDLL("libc.so.6")
+def direct_exit(status):
+    libc.syscall(60, status)  # 60 is SYS_exit on x86-64
+
