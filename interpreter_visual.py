@@ -3690,3 +3690,35 @@ class LockFreeStack:
 def generate_simd_add(self):
     self.emit("vaddps ymm0, ymm1, ymm2")
 
+import os
+import sys
+from pathlib import Path
+
+from tempercore_language.compiler.divseq_generator import convert_tpc_to_divseq
+from tempercore_language.compiler.codegen_divseq_to_asm import divseq_to_asm, build_executable
+
+def temperc_main(input_tpc_path):
+    input_tpc_path = Path(input_tpc_path).resolve()
+    base_name = input_tpc_path.stem
+    folder = input_tpc_path.parent
+
+    divseq_path = folder / f"{base_name}.divseq"
+    asm_path = folder / f"{base_name}.asm"
+    exe_path = folder / f"{base_name}.out"
+
+    print(f"[1] Converting: {input_tpc_path.name} → {divseq_path.name}")
+    convert_tpc_to_divseq(str(input_tpc_path), str(divseq_path))
+
+    print(f"[2] Compiling: {divseq_path.name} → {asm_path.name}")
+    divseq_to_asm(str(divseq_path), str(asm_path))
+
+    print(f"[3] Building Executable: {asm_path.name} → {exe_path.name}")
+    build_executable(str(asm_path), str(exe_path))
+
+    print(f"[✓] Build complete: {exe_path}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: temperc <file.tpc>")
+        sys.exit(1)
+    temperc_main(sys.argv[1])
