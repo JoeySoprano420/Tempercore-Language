@@ -4221,3 +4221,33 @@ if __name__ == "__main__":
     # Perform a Direct Syscall (Exit Example)
     SyscallHandler.invoke_syscall(60)
 
+from llvmlite import ir, binding
+
+module = ir.Module(name="tempercore")
+
+func_type = ir.FunctionType(ir.Int32Type(), [])
+func = ir.Function(module, func_type, name="main")
+block = func.append_basic_block(name="entry")
+builder = ir.IRBuilder(block)
+
+x = builder.alloca(ir.Int32Type(), name="x")
+builder.store(ir.Constant(ir.Int32Type(), 42), x)
+builder.ret(builder.load(x))
+
+print(module)  # LLVM IR Output
+binding.initialize()
+binding.initialize_native_target()
+binding.initialize_native_asmprinter()
+target = binding.Target.from_default_triple()
+tm = target.create_target_machine()
+binding.parse_assembly(str(module))
+
+import concurrent.futures
+
+def task(x):
+    return x ** 2
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    results = list(executor.map(task, range(10)))
+
+print(results)
