@@ -3722,3 +3722,38 @@ if __name__ == "__main__":
         print("Usage: temperc <file.tpc>")
         sys.exit(1)
     temperc_main(sys.argv[1])
+
+import numpy as np
+
+import queue
+
+class LockFreeStack:
+    def __init__(self):
+        self.q = queue.SimpleQueue()
+
+    def push(self, value):
+        self.q.put(value)
+
+    def pop(self):
+        try:
+            return self.q.get_nowait()
+        except queue.Empty:
+            return None
+        import queue
+
+class LockFreeQueue:
+    def __init__(self):
+        self.q = queue.SimpleQueue()
+
+    def enqueue(self, value):
+        self.q.put(value)
+
+    def dequeue(self):
+        try:
+            return self.q.get_nowait()
+        except queue.Empty:
+            return None
+
+        def generate_vector_add(self, dest, src1, src2):    
+            # AVX2: vaddps ymm_dest, ymm_src1, ymm_src2
+            self.emit(f"    vaddps {dest}, {src1}, {src2}")
