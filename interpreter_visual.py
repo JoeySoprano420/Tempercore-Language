@@ -4251,3 +4251,122 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
     results = list(executor.map(task, range(10)))
 
 print(results)
+
+import threading
+import queue
+import math
+import operator
+from collections import defaultdict, deque
+import time
+import random
+
+# ===============================
+# 🔒 Shared Structures & Globals
+# ===============================
+symbol_table = {}
+memory = defaultdict(int)
+memo_cache = {}
+score_log = []
+task_queue = queue.PriorityQueue()
+lock = threading.Lock()
+
+# ===================================
+# 🧠 Smart Operation and Evaluation
+# ===================================
+op_map = {
+    '+': operator.add,
+    '-': operator.sub,
+    '*': operator.mul,
+    '/': lambda a, b: a // b if b else 0,
+    '%': lambda a, b: a % b if b else 0,
+    '^': operator.pow
+}
+
+# Token priority for decision chains
+op_priority = {'+': 1, '-': 1, '*': 2, '/': 2, '%': 2, '^': 3}
+
+# Evaluate with critical task decision depth
+def evaluate(expr):
+    stack = []
+    for token in expr.split():
+        if token in op_map:
+            b, a = stack.pop(), stack.pop()
+            r = op_map[token](a, b)
+            stack.append(r)
+        elif token.isdigit():
+            stack.append(int(token))
+        elif token in symbol_table:
+            stack.append(symbol_table[token])
+        else:
+            raise ValueError(f"Unrecognized: {token}")
+    return stack[0] if stack else 0
+
+# ===================================
+# 🚦 Hierarchical Task Dispatcher
+# ===================================
+class Task:
+    def __init__(self, tid, varname, expr, prio=0):
+        self.tid = tid
+        self.varname = varname
+        self.expr = expr
+        self.priority = prio
+        self.timestamp = time.time()
+
+    def __lt__(self, other):
+        return (self.priority, -self.timestamp) < (other.priority, -other.timestamp)
+
+# Dynamic queue feed
+def queue_task(tid, varname, expr, prio=0):
+    task = Task(tid, varname, expr, prio)
+    task_queue.put(task)
+
+# Smart memoization
+def memoized_solve(varname, expr):
+    if expr in memo_cache:
+        return memo_cache[expr]
+    val = evaluate(expr)
+    memo_cache[expr] = val
+    symbol_table[varname] = val
+    return val
+
+# ===================================
+# 🧵 Worker Engine with Depth Logic
+# ===================================
+def worker_loop():
+    while not task_queue.empty():
+        task = task_queue.get()
+        with lock:
+            result = memoized_solve(task.varname, task.expr)
+            memory[task.varname] = result
+            score_log.append((task.tid, result))
+            print(f"[{task.tid}] {task.varname} = {result}")
+        task_queue.task_done()
+
+# ==========================
+# 🧪 Sample Complex Workload
+# ==========================
+def load_hierarchical_tasks():
+    queue_task("T01", "a", "3 4 +", 2)
+    queue_task("T02", "b", "2 a *", 3)
+    queue_task("T03", "c", "b 5 +", 4)
+    queue_task("T04", "d", "c a /", 1)
+    queue_task("T05", "e", "d b *", 5)
+    for i in range(6, 20):
+        x = random.randint(10, 99)
+        y = random.randint(2, 9)
+        prio = random.randint(1, 10)
+        queue_task(f"T{i:02d}", f"v{i}", f"{x} {y} *", prio)
+
+# ==============================
+# 🎯 Run Smart Evaluation Engine
+# ==============================
+def run_advanced_tempercore():
+    load_hierarchical_tasks()
+    threads = [threading.Thread(target=worker_loop) for _ in range(6)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    print("[✓] Tempercore Engine Complete")
+
+if __name__ == "__main__":
+    run_advanced_tempercore()
+
