@@ -5672,3 +5672,244 @@ class Stack:
                 self.stack.clear()
                 self.display()
 
+class Stack:
+    def __init__(self):
+        self.stack = []
+        self.lock = threading.Lock()
+
+    def push(self, val):
+        with self.lock:
+            self.stack.append(val)
+            self.display()
+
+    def pop(self):
+        with self.lock:
+            if not self.stack:
+                print("[Stack] Underflow error: stack is empty.")
+                return None
+            val = self.stack.pop()
+            self.display()
+            return val
+
+        def top(self):
+            with self.lock:
+                if not self.stack:
+                    print("[Stack] Underflow error: stack is empty.")
+                    return None
+                return self.stack[-1]
+
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+        self.usage_order = []
+
+    def alloc(self):
+        if not self.free:
+            # Simple spill: free the least recently used
+            reg = self.usage_order.pop(0)
+            self.in_use.remove(reg)
+            self.free.add(reg)
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        self.usage_order.append(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+            if reg in self.usage_order:
+                self.usage_order.remove(reg)
+
+    def reset(self):
+        self.free = set(self.registers)
+        self.in_use.clear()
+        self.usage_order.clear()
+
+        self.display()
+        def display(self):
+            print("\n[REGISTER ALLOCATOR]")
+            print("Free registers:", self.free)
+            print("In use registers:", self.in_use)
+            print("Usage order:", self.usage_order)
+            print("-" * 20)
+
+        def generate_vmulps(self, dest, src1, src2):
+            # AVX2: vmulps ymm_dest, ymm_src1, ymm_src2
+            self.emit(f"    vmulps {dest}, {src1}, {src2}")
+            return f"vmulps {dest}, {src1}, {src2}"
+
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator()
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_add(self):
+        reg1 = self.reg_alloc.alloc()
+        reg2 = self.reg_alloc.alloc()
+        self.emit(f"    pop {reg1}")
+        self.emit(f"    pop {reg2}")
+        self.emit(f"    add {reg1}, {reg2}")
+        self.emit(f"    push {reg1}")
+        self.reg_alloc.free_reg(reg1)
+        self.reg_alloc.free_reg(reg2)
+
+        def generate_sub(self):
+
+            reg1 = self.reg_alloc.alloc()
+            reg2 = self.reg_alloc.alloc()
+            self.emit(f"    pop {reg1}")
+            self.emit(f"    pop {reg2}")
+            self.emit(f"    sub {reg2}, {reg1}")
+            self.emit(f"    push {reg2}")
+            self.reg_alloc.free_reg(reg1)
+            self.reg_alloc.free_reg(reg2)
+
+            def generate_mul(self):
+                reg1 = self.reg_alloc.alloc()
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg1}")
+                self.emit(f"    pop {reg2}")
+                self.emit(f"    imul {reg1}, {reg2}")
+                self.emit(f"    push {reg1}")
+                self.reg_alloc.free_reg(reg1)
+                self.reg_alloc.free_reg(reg2)
+def generate_div(self):
+    self.emit("    ; div")
+    reg1 = self.reg_alloc.alloc()  # dividend
+    reg2 = self.reg_alloc.alloc()  # divisor
+    self.emit(f"    pop {reg2}")  # divisor
+    self.emit(f"    pop {reg1}")  # dividend
+    self.emit("    xor rdx, rdx")  # Ensure rdx is zero before cqo
+    self.emit("    cqo")
+    self.emit(f"    idiv {reg2}")
+    self.emit(f"    push {reg1}")  # quotient
+    self.emit(f"    push rdx")  # remainder
+    self.reg_alloc.free_reg(reg1)
+    self.reg_alloc.free_reg(reg2)
+
+    class MachineCodeExtension(Extension):
+        def handle(self, tokens):
+            if tokens[0] == "compile":
+                codegen = CodeGenerator()
+            # ... code generation logic ...
+            asm = codegen.output()
+            print("\n[Generated x86-64 Assembly]:\n")
+            print(asm)
+
+            if not KEYSTONE_AVAILABLE:
+                print("\n[Keystone] Keystone assembler not available. Fallback: saving assembly to 'output.asm'.")
+                with open("output.asm", "w") as f:
+                    f.write(asm)
+                print("[Fallback] Assembly written to output.asm. You can assemble it manually with NASM/YASM.")
+                return True
+
+            # ... Keystone/JIT logic ...
+
+            import mmap
+import ctypes
+
+def safe_jit_execute(machine_code):
+    size = len(machine_code)
+    mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+    mm.write(machine_code)
+    mm.seek(0)
+    FUNC_TYPE = ctypes.CFUNCTYPE(None)
+    address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+    if not address or address == 0:
+        print("[JIT] Invalid function pointer. Aborting execution.")
+        mm.close()
+        return
+    try:
+        func = FUNC_TYPE(address)
+        print("[JIT] Executing machine code (safely):")
+        func()
+    except Exception as e:
+        print(f"[JIT] Execution error: {e}")
+    finally:
+        mm.close()
+
+        def temperc_main(input_tpc_path):
+
+            import numpy as np
+
+def simd_add(a, b):
+    # a, b: numpy arrays of dtype float32
+    return np.add(a, b)
+
+def simd_mul(a, b):
+    return np.multiply(a, b)
+
+import sys
+from pathlib import Path
+from temperc import convert_tpc_to_divseq, divseq_to_asm, build_executable
+# Define paths
+input_tpc_path = Path(input_tpc_path).resolve() # type: ignore
+divseq_path = input_tpc_path.with_suffix('.divseq')
+
+asm_path = input_tpc_path.with_suffix('.asm')
+exe_path = input_tpc_path.with_suffix('.exe')
+print(f"[1] Converting TPC to DIVSEQ: {input_tpc_path.name} → {divseq_path.name}")
+# Convert TPC to DIVSEQ
+convert_tpc_to_divseq(input_tpc_path, divseq_path)
+
+def rle_compress(instructions):
+    compressed = []
+    prev = None
+    count = 1
+    for instr in instructions:
+        if instr == prev:
+            count += 1
+        else:
+            if prev is not None:
+                if count > 1:
+                    compressed.append(f"{prev} * {count}")
+                else:
+                    compressed.append(prev)
+            prev = instr
+            count = 1
+    if prev:
+        compressed.append(f"{prev} * {count}" if count > 1 else prev)
+    return compressed
+
+def fold_redundant_loads(instructions):
+    folded = []
+    last_load = None
+    for instr in instructions:
+        if instr.startswith("mov") and instr == last_load:
+            continue  # skip redundant load
+        folded.append(instr)
+        last_load = instr if instr.startswith("mov") else None
+    return folded
+
+def compress_bytecode(instructions):
+    folded = fold_redundant_loads(instructions)
+    return rle_compress(folded)
+
+print(f"[2] Converting DIVSEQ to ASM: {divseq_path.name} → {asm_path.name}")
+# Convert DIVSEQ to ASM
+divseq_to_asm(divseq_path, asm_path)
+print(f"[3] Building executable: {asm_path.name} → {exe_path.name}")
+            # Build executable from ASM
+build_executable(asm_path, exe_path)
+print(f"[4] Executable built successfully: {exe_path.name}")
+exe_path
+def run_tempercore_command(cmd):
+            tokens = cmd.strip().split()
+            if not tokens:
+                return
+            # Symbolic assignment: sym x = 2*y + 3
+            if tokens[0] == "sym":
+                name = tokens[1]
+                expr = " ".join(tokens[3:]) if tokens[2] == "=" else " ".join(tokens[2:])
+                symbolic.set(name, expr)
+                print(f"[Symbolic] {name} = {symbolic.get(name)}")
+                return
+            # ...rest of your command handling...
+            print(f"[Error] Unknown command: {cmd}")
+            return
