@@ -1,0 +1,9 @@
+@pass diagnostics_enforce_define {
+    foreach node in ast {
+        if node.type == "IdentifierUsage" {
+            if not declared_symbols.contains(node.name) {
+                emit_error node.line, "TEMPERCORE::E001: '" + node.name + "' must be defined before use."
+            }
+        }
+    }
+}
