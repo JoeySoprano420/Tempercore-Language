@@ -7790,3 +7790,421 @@ class GameExtension(Extension):
 
         return "game start, game entity <name>, game event <type>"
 
+import threading
+import http.server
+import socketserver
+import requests
+
+class WebExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "web":
+            if len(tokens) < 2:
+                print("[Web] Missing subcommand.")
+                return True
+            if tokens[1] == "serve":
+                port = int(tokens[2]) if len(tokens) > 2 else 8080
+                handler = http.server.SimpleHTTPRequestHandler
+                def serve():
+                    with socketserver.TCPServer(("", port), handler) as httpd:
+                        print(f"[Web] Serving HTTP on port {port} (Ctrl+C to stop)...")
+                        try:
+                            httpd.serve_forever()
+                        except KeyboardInterrupt:
+                            print("[Web] Server stopped.")
+                threading.Thread(target=serve, daemon=True).start()
+                return True
+            elif tokens[1] == "request":
+                if len(tokens) < 3:
+                    print("[Web] 'request' requires a URL.")
+                    return True
+                url = tokens[2]
+                try:
+                    resp = requests.get(url)
+                    print(f"[Web] GET {url} -> {resp.status_code}\n{resp.text[:200]}...")
+                except Exception as e:
+                    print(f"[Web] Request error: {e}")
+                return True
+            else:
+                print("[Web] Unknown web command")
+                return True
+        return False
+
+import tkinter as tk
+
+class GUIExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "gui":
+            if len(tokens) < 2:
+                print("[GUI] Missing subcommand.")
+                return True
+            if tokens[1] == "window":
+                title = " ".join(tokens[2:]) if len(tokens) > 2 else "Tempercore Window"
+                def show_window():
+                    root = tk.Tk()
+                    root.title(title)
+                    tk.Label(root, text=title).pack()
+                    root.mainloop()
+                threading.Thread(target=show_window, daemon=True).start()
+                return True
+            elif tokens[1] == "button":
+                label = " ".join(tokens[2:]) if len(tokens) > 2 else "Button"
+                def show_button():
+                    root = tk.Tk()
+                    tk.Button(root, text=label, command=root.destroy).pack()
+                    root.mainloop()
+                threading.Thread(target=show_button, daemon=True).start()
+                return True
+            elif tokens[1] == "label":
+                text = " ".join(tokens[2:]) if len(tokens) > 2 else "Label"
+                def show_label():
+                    root = tk.Tk()
+                    tk.Label(root, text=text).pack()
+                    root.mainloop()
+                threading.Thread(target=show_label, daemon=True).start()
+                return True
+            else:
+                print("[GUI] Unknown GUI command")
+                return True
+        return False
+
+try:
+    from sklearn.linear_model import LinearRegression
+    import numpy as np
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+class MLExtension(Extension):
+    def __init__(self):
+        self.models = {}
+
+    def handle(self, tokens):
+        if tokens[0] == "ml":
+            if not SKLEARN_AVAILABLE:
+                print("[ML] scikit-learn not available. Install with 'pip install scikit-learn numpy'.")
+                return True
+            if len(tokens) < 2:
+                print("[ML] Missing subcommand.")
+                return True
+            if tokens[1] == "train":
+                # ml train <modelname> <x1,x2,...> <y1,y2,...>
+                if len(tokens) < 5:
+                    print("[ML] Usage: ml train <modelname> <x1,x2,...> <y1,y2,...>")
+                    return True
+                name = tokens[2]
+                X = np.array([[float(x)] for x in tokens[3].split(",")])
+                y = np.array([float(y) for y in tokens[4].split(",")])
+                model = LinearRegression()
+                model.fit(X, y)
+                self.models[name] = model
+                print(f"[ML] Trained model '{name}'")
+                return True
+            elif tokens[1] == "predict":
+                # ml predict <modelname> <x>
+                if len(tokens) < 4:
+                    print("[ML] Usage: ml predict <modelname> <x>")
+                    return True
+                name = tokens[2]
+                x = float(tokens[3])
+                model = self.models.get(name)
+                if not model:
+                    print(f"[ML] Model '{name}' not found.")
+                    return True
+                pred = model.predict(np.array([[x]]))
+                print(f"[ML] Prediction: {pred[0]}")
+                return True
+            elif tokens[1] == "evaluate":
+                # ml evaluate <modelname> <x1,x2,...> <y1,y2,...>
+                if len(tokens) < 5:
+                    print("[ML] Usage: ml evaluate <modelname> <x1,x2,...> <y1,y2,...>")
+                    return True
+                name = tokens[2]
+                X = np.array([[float(x)] for x in tokens[3].split(",")])
+                y = np.array([float(y) for y in tokens[4].split(",")])
+                model = self.models.get(name)
+                if not model:
+                    print(f"[ML] Model '{name}' not found.")
+                    return True
+                score = model.score(X, y)
+                print(f"[ML] R^2 score: {score}")
+                return True
+            else:
+                print("[ML] Unknown ML command")
+                return True
+        return False
+
+import os
+
+class MobileExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "mobile":
+            if len(tokens) < 2:
+                print("[Mobile] Missing subcommand.")
+                return True
+            if tokens[1] == "build":
+                platform_name = tokens[2] if len(tokens) > 2 else "generic"
+                app_dir = f"mobile_app_{platform_name}"
+                os.makedirs(app_dir, exist_ok=True)
+                with open(os.path.join(app_dir, "main.py"), "w") as f:
+                    f.write("# Entry point for mobile app\n")
+                print(f"[Mobile] Created app package: {app_dir}/main.py")
+                return True
+            elif tokens[1] == "deploy":
+                device = tokens[2] if len(tokens) > 2 else "emulator"
+                print(f"[Mobile] (Local) Deploying to {device} (no real device interaction).")
+                return True
+            else:
+                print("[Mobile] Unknown mobile command")
+                return True
+        return False
+
+import curses
+import time
+
+class GameExtension(Extension):
+    def __init__(self):
+        self.state = {"entities": [], "running": False}
+
+    def handle(self, tokens):
+        if tokens[0] == "game":
+            if len(tokens) < 2:
+                print("[Game] Missing subcommand.")
+                return True
+            if tokens[1] == "start":
+                print("[Game] Starting game loop (press 'q' to quit)...")
+                self.state["running"] = True
+                threading.Thread(target=self.game_loop, daemon=True).start()
+                return True
+            elif tokens[1] == "entity":
+                name = " ".join(tokens[2:]) if len(tokens) > 2 else f"entity{len(self.state['entities'])}"
+                self.state["entities"].append({"name": name, "x": 1, "y": 1})
+                print(f"[Game] Created entity: {name}")
+                return True
+            elif tokens[1] == "event":
+                print("[Game] Event system not implemented.")
+                return True
+            else:
+                print("[Game] Unknown game command")
+                return True
+        return False
+
+    def game_loop(self):
+        def curses_loop(stdscr):
+            stdscr.nodelay(True)
+            while self.state["running"]:
+                stdscr.clear()
+                stdscr.addstr(0, 0, "Tempercore Game Loop (press 'q' to quit)")
+                for idx, ent in enumerate(self.state["entities"]):
+                    stdscr.addstr(2 + idx, 2, f"Entity: {ent['name']} at ({ent['x']},{ent['y']})")
+                stdscr.refresh()
+                try:
+                    key = stdscr.getkey()
+                    if key == 'q':
+                        self.state["running"] = False
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.1)
+        curses.wrapper(curses_loop)
+
+import sys
+
+class MemoryPool:
+    def __init__(self, block_size=4096, pool_size=1024*1024*10):
+        self.block_size = block_size
+        self.pool_size = pool_size
+        self.pool = bytearray(pool_size)
+        self.free_blocks = list(range(0, pool_size, block_size))
+        self.lock = threading.Lock()
+        self.alloc_map = {}
+
+    def allocate(self, name, size):
+        with self.lock:
+            blocks_needed = (size + self.block_size - 1) // self.block_size
+            if len(self.free_blocks) < blocks_needed:
+                print(f"[Heap] Not enough memory to allocate '{name}'.")
+                return None
+            start = self.free_blocks.pop(0)
+            self.alloc_map[name] = (start, blocks_needed * self.block_size)
+            return memoryview(self.pool)[start:start + blocks_needed * self.block_size]
+
+    def free(self, name):
+        with self.lock:
+            if name in self.alloc_map:
+                start, size = self.alloc_map.pop(name)
+                for i in range(start, start + size, self.block_size):
+                    self.free_blocks.append(i)
+                self.free_blocks.sort()
+
+class Heap:
+    def __init__(self):
+        self.heap = {}
+        self.pool = MemoryPool()
+        self.lock = threading.Lock()
+
+    def allocate(self, name, value):
+        with self.lock:
+            size = len(str(value).encode('utf-8'))
+            buf = self.pool.allocate(name, size)
+            if buf is not None:
+                buf[:size] = str(value).encode('utf-8')
+                self.heap[name] = buf
+                self.display()
+            else:
+                print(f"[Heap] Allocation failed for '{name}'.")
+
+    def retrieve(self, name):
+        with self.lock:
+            buf = self.heap.get(name, None)
+            if buf is not None:
+                return bytes(buf).decode('utf-8', errors='replace')
+            return None
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.heap:
+                self.pool.free(name)
+                del self.heap[name]
+                self.display()
+
+    def clear(self):
+        with self.lock:
+            for name in list(self.heap.keys()):
+                self.pool.free(name)
+            self.heap.clear()
+            self.display()
+
+    def keys(self):
+        with self.lock:
+            return list(self.heap.keys())
+
+    def dump(self):
+        with self.lock:
+            return {k: bytes(v).decode('utf-8', errors='replace') for k, v in self.heap.items()}
+
+    def display(self):
+        print("\n[HEAP]")
+        for k, v in self.heap.items():
+            print(f"{k} => {bytes(v).decode('utf-8', errors='replace')}")
+        print("-" * 20)
+
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+        self.usage_order = []
+
+    def alloc(self):
+        if not self.free:
+            reg = self.usage_order.pop(0)
+            self.in_use.remove(reg)
+            self.free.add(reg)
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        self.usage_order.append(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+            if reg in self.usage_order:
+                self.usage_order.remove(reg)
+
+    def reset(self):
+        self.free = set(self.registers)
+        self.in_use.clear()
+        self.usage_order.clear()
+
+import numpy as np
+
+def simd_add(a, b):
+    return np.add(a, b)
+
+def simd_mul(a, b):
+    return np.multiply(a, b)
+
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator(['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11', 'ymm0', 'ymm1', 'ymm2', 'ymm3'])
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_stack_push(self, value):
+        reg = self.reg_alloc.alloc()
+        self.emit(f"    mov {reg}, {value}")
+        self.emit(f"    push {reg}")
+        self.reg_alloc.free_reg(reg)
+
+    def generate_stack_pop(self):
+        reg = self.reg_alloc.alloc()
+        self.emit(f"    pop {reg}")
+        self.reg_alloc.free_reg(reg)
+
+    def generate_add(self):
+        reg1 = self.reg_alloc.alloc()
+        reg2 = self.reg_alloc.alloc()
+        self.emit(f"    pop {reg1}")
+        self.emit(f"    pop {reg2}")
+        self.emit(f"    add {reg1}, {reg2}")
+        self.emit(f"    push {reg1}")
+        self.reg_alloc.free_reg(reg1)
+        self.reg_alloc.free_reg(reg2)
+
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+    def compile_and_execute(self):
+        if not KEYSTONE_AVAILABLE:
+            print("[Keystone] Keystone assembler not available. Install with 'pip install keystone-engine'.")
+            return
+        asm = self.output()
+        ks = Ks(KS_ARCH_X86, KS_MODE_64)
+        encoding, _ = ks.asm(asm)
+        machine_code = bytes(encoding)
+        size = len(machine_code)
+        mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+        mm.write(machine_code)
+        mm.seek(0)
+        FUNC_TYPE = ctypes.CFUNCTYPE(None)
+        address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+        if not address or address == 0:
+            print("[JIT] Invalid function pointer. Aborting execution.")
+            mm.close()
+            return
+        func = FUNC_TYPE(address)
+        func()
+        mm.close()
+
+    # Clean up memory
+
+    def cleanup(self):
+        self.instructions.clear()
+        self.reg_alloc.reset()
+        self.reg_alloc = RegisterAllocator(['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11', 'ymm0', 'ymm1', 'ymm2', 'ymm3'])
+        if hasattr(self, 'mm'):
+            self.mm.close()
+            self.mm = None
+            if hasattr(self, 'func'):
+                del self.func
+                self.func = None
+                def run_tempercore_command(command):
+
+                        tokens = command.strip().split()
+                        if not tokens:
+                            print("[Interpreter] No command entered.")
+                            return
+                        if tokens[0] == "exit":
+                            print("[Interpreter] Exiting Tempercore.")
+                            sys.exit(0)
