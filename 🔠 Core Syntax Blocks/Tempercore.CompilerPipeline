@@ -1,0 +1,8 @@
+@pipeline [
+    preprocess
+    parse
+    resolve
+    diagnostics_enforce_define  // 👈 Insert here
+    optimize
+    emit
+]
