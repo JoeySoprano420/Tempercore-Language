@@ -1,0 +1,23 @@
+// --- Symbol Registry ---
+@runtime declared_symbols = {}
+
+rule define(identifier, value?) {
+    declared_symbols[identifier] = true
+    return value
+}
+
+// --- Usage Enforcement ---
+rule use(identifier) {
+    if not declared_symbols[identifier] {
+        error "TEMPERCORE::E001: '" + identifier + "' used before define declaration."
+    }
+    return identifier
+}
+
+// --- Macro Friendly Aliases ---
+alias def := define
+alias use_id := use
+
+// --- Sample Usage ---
+def PI = 3.14159
+let circumference = use("PI") * diameter
