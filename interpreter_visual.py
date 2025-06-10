@@ -4430,5 +4430,155 @@ if __name__ == "__main__":
         # Test an unknown command
         run_tempercore_command("unknown command syntax")
 
+# Test an empty command
+        run_tempercore_command("  ")
+        run_tempercore_command("let x = 5")
+        run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+        run_tempercore_command("define list alpha: array of string")
+        run_tempercore_command('append "A" to alpha')
+        run_tempercore_command('inspect log level = major')
+        run_tempercore_command('throw error "missing variable" unless safe_mode')
+        run_tempercore_command('pass error if diagnostic = ignore')
+        run_tempercore_command('assert x != 0')
+        run_tempercore_command('highlight "Mismatch at branch"')
+        run_tempercore_command("unknown command syntax")
+        run_tempercore_command("  ")
+        run_tempercore_command("let x = 5")
+        run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+
+run_tempercore_command("define list alpha: array of string")
+
+import sympy
+
+class SymbolicTable:
+    def __init__(self):
+        self.symbols = {}
+
+    def set(self, name, expr):
+        # Accepts string or sympy expression
+        if isinstance(expr, str):
+            expr = sympy.sympify(expr)
+        self.symbols[name] = expr
+
+    def get(self, name):
+        return self.symbols.get(name, None)
+
+    def eval(self, name, subs=None):
+        expr = self.get(name)
+        if expr is not None:
+            return expr.evalf(subs=subs)
+        return None
+
+symbolic = SymbolicTable()
+
+def run_tempercore_command(cmd):
+    tokens = cmd.strip().split()
+    if not tokens:
+        return
+
+    # Symbolic assignment: sym x = 2*y + 3
+    if tokens[0] == "sym":
+        name = tokens[1]
+        expr = " ".join(tokens[3:]) if tokens[2] == "=" else " ".join(tokens[2:])
+        symbolic.set(name, expr)
+        print(f"[Symbolic] {name} = {symbolic.get(name)}")
+        return
+
+    # Symbolic evaluation: evalsym x y=5
+    if tokens[0] == "evalsym":
+        name = tokens[1]
+        subs = {}
+        for sub in tokens[2:]:
+            k, v = sub.split("=")
+            subs[k] = float(v)
+        result = symbolic.eval(name, subs)
+        print(f"[Symbolic Eval] {name}({subs}) = {result}")
+        return
+
+    # ...rest of your command handling...
+
+    print(f"[Error] Unknown command: {cmd}")
+
+    return
+
+import re
+
+class SecurityManager:
+    def __init__(self):
+        self.forbidden_patterns = [
+            r'os\.system', r'subprocess', r'eval', r'exec', r'open\(', r'__import__'
+        ]
+
+    def check(self, code):
+        for pat in self.forbidden_patterns:
+            if re.search(pat, code):
+                raise PermissionError(f"Security violation: '{pat}' is not allowed.")
+
+security = SecurityManager()
+
+def run_tempercore_command(cmd):
+    try:
+        security.check(cmd)
+    except PermissionError as e:
+        print(f"[SECURITY] {e}")
+        return
+
+    # ...rest of your command handling...
+
+    tokens = cmd.strip().split()
+    if not tokens:
+        return
+
+    if tokens[0] == "sym":
+        name = tokens[1]
+        expr = " ".join(tokens[3:]) if tokens[2] == "=" else " ".join(tokens[2:])
+        symbolic.set(name, expr)
+        print(f"[Symbolic] {name} = {symbolic.get(name)}")
+        return
+
+    import sys
+import threading
+
+class OptimizedHeap:
+    def __init__(self, max_size=1024*1024*10):
+        self.heap = {}
+        self.lock = threading.RLock()
+        self.max_size = max_size
+        self.used = 0
+        self.alloc_map = {}
+
+    def allocate(self, name, value):
+        with self.lock:
+            size = sys.getsizeof(value)
+            if self.used + size > self.max_size:
+                print(f"[Heap] Allocation failed: Not enough memory for '{name}' ({size} bytes).")
+                return
+            if name in self.heap:
+                self.used -= self.alloc_map[name]
+            self.heap[name] = value
+            self.alloc_map[name] = size
+            self.used += size
+            self.display()
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.heap:
+                self.used -= self.alloc_map[name]
+                del self.heap[name]
+                del self.alloc_map[name]
+                self.display()
+
+    def memory_usage(self):
+        with self.lock:
+            return self.used, self.max_size
+
+    def display(self):
+        print("\n[HEAP]")
+        for k, v in self.heap.items():
+            print(f"{k} => {v} ({self.alloc_map[k]} bytes)")
+        print(f"Used: {self.used} / {self.max_size} bytes")
+        print("-" * 20)
+
+heap = OptimizedHeap()
 
 
