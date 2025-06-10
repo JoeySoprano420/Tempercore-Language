@@ -8208,3 +8208,179 @@ class CodeGenerator:
                         if tokens[0] == "exit":
                             print("[Interpreter] Exiting Tempercore.")
                             sys.exit(0)
+
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+
+class SimpleRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        response = "<h1>Hello from Tempercore Web Server!</h1>"
+        self.wfile.write(response.encode())
+    
+    def log_message(self, format, *args):
+        # Overriding to reduce console noise; implement custom logging if desired.
+        pass
+
+def start_web_server(port=8000):
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, SimpleRequestHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    print(f"[Web] Server started on port {port}")
+
+# In your WebExtension.handle() method:
+if tokens[1] == "serve":
+    try:
+        port = int(tokens[2]) if len(tokens) > 2 else 8000
+    except ValueError:
+        port = 8000
+    start_web_server(port)
+
+import urllib.request
+
+def web_request(url):
+    try:
+        with urllib.request.urlopen(url) as response:
+            content = response.read().decode()
+            print("[Web] Received response:", content[:200], "...")
+    except Exception as e:
+        print("[Web] Request failed:", e)
+
+# Web Extension: Start an HTTP server and perform a GET request.
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+import urllib.request
+
+class TempercoreHTTPHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"<h1>Welcome to Tempercore Web Server!</h1>")
+    
+    def log_message(self, format, *args):
+        # Suppress default logging
+        return
+
+def start_web_server(port=8000):
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, TempercoreHTTPHandler)
+    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    server_thread.start()
+    print(f"[Web] Server started on port {port}")
+    return httpd
+
+def web_request(url):
+    try:
+        with urllib.request.urlopen(url) as response:
+            content = response.read().decode()
+            print("[Web] Response Received (first 200 chars):", content[:200], "...")
+    except Exception as e:
+        print("[Web] Request error:", e)
+
+# Example usage:
+# start_web_server(8000)
+# web_request("http://localhost:8000")
+
+# GUI Extension: Create a window with a label and button.
+import tkinter as tk
+
+def create_window(title="Tempercore GUI"):
+    window = tk.Tk()
+    window.title(title)
+    
+    label = tk.Label(window, text="This is a real Tempercore window!")
+    label.pack(pady=10)
+    
+    button = tk.Button(window, text="Close", command=window.destroy)
+    button.pack(pady=5)
+    
+    window.mainloop()
+
+# Example usage:
+# create_window("My Tempercore Window")
+
+# ML Extension: A simple linear regression trainer.
+def simple_linear_regression(data):
+    """
+    data: List of tuples [(x1, y1), (x2, y2), ...]
+    Returns slope and intercept.
+    """
+    n = len(data)
+    sum_x = sum(x for x, _ in data)
+    sum_y = sum(y for _, y in data)
+    sum_xy = sum(x * y for x, y in data)
+    sum_xx = sum(x * x for x, _ in data)
+    try:
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+        intercept = (sum_y - slope * sum_x) / n
+    except ZeroDivisionError:
+        slope, intercept = 0, 0
+    return slope, intercept
+
+def ml_train(data_str):
+    """
+    data_str: A string representation of data points in format "x1,y1;x2,y2;..."
+    """
+    try:
+        data = [tuple(map(float, pair.split(','))) for pair in data_str.split(';')]
+        slope, intercept = simple_linear_regression(data)
+        print(f"[ML] Training complete. Slope: {slope:.3f}, Intercept: {intercept:.3f}")
+    except Exception as e:
+        print("[ML] Training error:", e)
+
+# Example usage:
+# ml_train("1,2;2,3;3,5")
+
+# Mobile Extension: Simulate mobile build and deployment.
+import os
+
+def mobile_build(platform="android"):
+    build_dir = f"./build_{platform}"
+    try:
+        os.makedirs(build_dir, exist_ok=True)
+        with open(os.path.join(build_dir, "app_info.txt"), "w") as f:
+            f.write(f"Mobile app build successful for {platform} platform.")
+        print(f"[Mobile] Build complete. Directory '{build_dir}' created.")
+    except Exception as e:
+        print("[Mobile] Build error:", e)
+
+def mobile_deploy(platform="android", device="local_device"):
+    build_dir = f"./build_{platform}"
+    if os.path.exists(build_dir):
+        print(f"[Mobile] Deploying build from '{build_dir}' to device '{device}'.")
+        # Additional deployment logic would go here.
+    else:
+        print("[Mobile] Build directory not found. Please run mobile_build first.")
+
+# Example usage:
+# mobile_build("ios")
+# mobile_deploy("ios", "Simulator")
+
+# Game Extension: A simple interactive game loop using curses.
+import curses
+import time
+
+def game_engine():
+    def main(screen):
+        curses.curs_set(0)  # Hide cursor
+        screen.clear()
+        screen.addstr(0, 0, "Welcome to Tempercore Game Engine!")
+        screen.addstr(2, 0, "Press 'q' to quit.")
+        screen.refresh()
+        while True:
+            key = screen.getch()
+            if key == ord('q'):
+                break
+            elif key != -1:
+                screen.addstr(4, 0, f"Key pressed: {chr(key)}  ")
+                screen.refresh()
+            time.sleep(0.1)
+    curses.wrapper(main)
+    print("[Game] Game engine exited.")
+
+# Example usage:
+# game_engine()
+
