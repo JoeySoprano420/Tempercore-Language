@@ -1,0 +1,4 @@
+# Valid
+define MAX_BUF = 256
+stack push "Allocating"
+heap allocate buf MAX_BUF
