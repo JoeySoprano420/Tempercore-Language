@@ -1,4 +1,6 @@
 import threading
+
+import config
 from stdlib import TempercoreStdLib as T
 
 class Stack:
@@ -9713,3 +9715,616 @@ if __name__ == "__main__":
 
 # Direct syscall
     direct_exit(0)  # Exit the program with status 0
+
+import pandas as pd
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Sample dataset: Each row is a transaction (like a shopping cart)
+dataset = [
+    ['milk', 'bread', 'butter'],
+    ['beer', 'bread'],
+    ['milk', 'bread', 'butter', 'beer'],
+    ['bread', 'butter'],
+    ['milk', 'butter']
+]
+
+# Convert dataset to a one-hot encoded DataFrame
+all_items = sorted(set(item for transaction in dataset for item in transaction))
+encoded_data = []
+for transaction in dataset:
+    encoded_data.append([1 if item in transaction else 0 for item in all_items])
+
+df = pd.DataFrame(encoded_data, columns=all_items)
+
+# Find frequent itemsets using Apriori
+frequent_itemsets = apriori(df, min_support=0.4, use_colnames=True)
+
+# Generate association rules from the frequent itemsets
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
+
+# Output results
+print("Frequent Itemsets:\n", frequent_itemsets)
+print("\nAssociation Rules:\n", rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
+import random
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+# 1. Transformer backbone (e.g., BERT or DistilBERT)
+class TransformerEncoder(nn.Module):
+    def __init__(self, model_name="distilbert-base-uncased"):
+        super().__init__()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(device)
+
+    def forward(self, texts):
+        encoded = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(device)
+        with torch.no_grad():  # Freeze base model for now
+            outputs = self.model(**encoded)
+        return outputs.last_hidden_state[:, 0]  # CLS embedding
+
+# 2. Contrastive associative learning module
+class AssociationLearner(nn.Module):
+    def __init__(self, embed_dim, temperature=0.07):
+        super().__init__()
+        self.projection = nn.Linear(embed_dim, embed_dim)
+        self.temperature = temperature
+        self.hebbian_matrix = torch.zeros((embed_dim, embed_dim)).to(device)  # Hebbian association matrix
+
+    def forward(self, embeddings_a, embeddings_b):
+        z_a = F.normalize(self.projection(embeddings_a), dim=-1)
+        z_b = F.normalize(self.projection(embeddings_b), dim=-1)
+
+        # Contrastive loss (NT-Xent)
+        sim = torch.matmul(z_a, z_b.T) / self.temperature
+        labels = torch.arange(sim.size(0)).to(device)
+        loss = F.cross_entropy(sim, labels)
+
+        # Hebbian-style update
+        with torch.no_grad():
+            for i in range(z_a.size(0)):
+                outer_product = torch.ger(z_a[i], z_b[i])
+                self.hebbian_matrix += outer_product * 0.01  # learning rate-style update
+
+        return loss
+
+# 3. Wrap it into a full learner
+class NeuralAssociationLearner(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = TransformerEncoder()
+        self.learner = AssociationLearner(embed_dim=768)  # 768 for DistilBERT
+
+    def forward(self, pairs):
+        a_texts, b_texts = zip(*pairs)
+        a_emb = self.encoder(list(a_texts))
+        b_emb = self.encoder(list(b_texts))
+        return self.learner(a_emb, b_emb)
+
+# Sample associative training data (context pairs, unsupervised)
+data = [
+    ("fire", "smoke"),
+    ("teacher", "classroom"),
+    ("cloud", "rain"),
+    ("bird", "sky"),
+    ("book", "library"),
+    ("ice", "cold"),
+    ("bread", "butter"),
+    ("phone", "call"),
+]
+
+# Training loop
+model = NeuralAssociationLearner().to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+for epoch in range(100):
+    random.shuffle(data)
+    total_loss = 0
+    for i in range(0, len(data), 4):  # batch size 4
+        batch = data[i:i+4]
+        loss = model(batch)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+
+    print(f"Epoch {epoch+1} - Loss: {total_loss:.4f}")
+
+# Example probe
+word = "cloud"
+embedding = model.encoder([word])[0]
+associated = torch.matmul(embedding, model.learner.hebbian_matrix.T)
+topk = torch.topk(associated, 5)
+
+print("Associations for:", word)
+print(topk)
+
+print("[Interpreter] Game command not recognized.")
+
+if tokens[0] == "web":
+                print("[Interpreter] Web command not recognized.")
+
+if tokens[0] == "exit":
+                print("[Interpreter] Exiting Tempercore.")
+                sys.exit(0)
+                print("[Interpreter] Command not recognized.")
+
+if tokens[0] == "help":
+                print("[Interpreter] Available commands: engine, game, web, exit, help")
+
+print(f"[Interpreter] Executing command: {tokens[0]}")
+                # Here you would handle the command execution logic
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
+import random
+
+# Settings
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+MODEL_NAME = 'distilbert-base-uncased'
+EMBED_DIM = 768
+TEMPERATURE = 0.07
+HEBBIAN_LR = 0.01
+BATCH_SIZE = 4
+EPOCHS = 20
+
+# Sample training pairs
+data = [
+    ("fire", "smoke"),
+    ("teacher", "classroom"),
+    ("cloud", "rain"),
+    ("bird", "sky"),
+    ("book", "library"),
+    ("ice", "cold"),
+    ("bread", "butter"),
+    ("phone", "call"),
+    ("sun", "heat"),
+    ("moon", "night"),
+    ("doctor", "hospital"),
+    ("car", "road"),
+]
+
+# Encoder using pretrained transformer
+class TransformerEncoder(nn.Module):
+    def __init__(self, model_name=MODEL_NAME):
+        super().__init__()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(DEVICE)
+
+    def forward(self, texts):
+        tokens = self.tokenizer(texts, return_tensors='pt', padding=True, truncation=True).to(DEVICE)
+        with torch.no_grad():
+            outputs = self.model(**tokens)
+        return outputs.last_hidden_state[:, 0]
+
+# Hebbian-style learner
+class AssociationLearner(nn.Module):
+    def __init__(self, embed_dim=EMBED_DIM, temperature=TEMPERATURE):
+        super().__init__()
+        self.proj = nn.Linear(embed_dim, embed_dim).to(DEVICE)
+        self.temperature = temperature
+        self.memory = torch.zeros((embed_dim, embed_dim), device=DEVICE)
+
+    def forward(self, emb_a, emb_b):
+        z_a = F.normalize(self.proj(emb_a), dim=-1)
+        z_b = F.normalize(self.proj(emb_b), dim=-1)
+
+        sim = torch.matmul(z_a, z_b.T) / self.temperature
+        labels = torch.arange(sim.size(0)).to(DEVICE)
+        loss = F.cross_entropy(sim, labels)
+
+        with torch.no_grad():
+            for i in range(z_a.size(0)):
+                self.memory += torch.ger(z_a[i], z_b[i]) * HEBBIAN_LR
+
+        return loss
+
+# Full system
+class NeuralAssociationLearner(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = TransformerEncoder()
+        self.learner = AssociationLearner()
+
+    def forward(self, text_pairs):
+        a_texts, b_texts = zip(*text_pairs)
+        emb_a = self.encoder(list(a_texts))
+        emb_b = self.encoder(list(b_texts))
+        return self.learner(emb_a, emb_b)
+
+# Training loop
+def train():
+    model = NeuralAssociationLearner().to(DEVICE)
+    optim = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    for epoch in range(EPOCHS):
+        random.shuffle(data)
+        total_loss = 0
+        for i in range(0, len(data), BATCH_SIZE):
+            batch = data[i:i+BATCH_SIZE]
+            loss = model(batch)
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            total_loss += loss.item()
+        print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.4f}")
+
+    return model
+
+# Association probe
+def get_associations(model, word, top_k=5):
+    with torch.no_grad():
+        emb = model.encoder([word])[0]
+        assoc_vector = torch.matmul(emb, model.learner.memory.T)
+        values, indices = torch.topk(assoc_vector, top_k)
+        return values.cpu().numpy(), indices.cpu().numpy()
+
+# Run everything
+model = train()
+query_word = "cloud"
+scores, indices = get_associations(model, query_word)
+
+# Output
+print(f"\nAssociations for '{query_word}':")
+for i, idx in enumerate(indices):
+    print(f"{i+1}: Vector index {idx} with score {scores[i]:.4f}")
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
+import random
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+# Settings
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+MODEL_NAME = 'distilbert-base-uncased'
+EMBED_DIM = 768
+TEMPERATURE = 0.07
+HEBBIAN_LR = 0.01
+DECAY_RATE = 0.98
+BATCH_SIZE = 2
+EPOCHS = 10
+
+# 🧾 Sentence-based associative pairs
+data = [
+    ("The fire spread quickly through the forest.", "Smoke filled the sky above the trees."),
+    ("A teacher was preparing notes for her class.", "The classroom was quiet before the students arrived."),
+    ("Clouds gathered over the mountain range.", "Rain began to fall gently on the valley."),
+    ("Birds soared high above the cliffs.", "The sky was painted with wings in motion."),
+    ("She picked a book from the dusty shelf.", "The library was her favorite place to hide."),
+    ("The lake had frozen solid overnight.", "The air was sharp and cold on her skin."),
+    ("He sliced the bread with care.", "Butter melted instantly on the warm crust."),
+    ("She reached for the phone.", "The call came just as she expected."),
+]
+
+# ============================
+# 🧠 Transformer Encoder
+# ============================
+class TransformerEncoder(nn.Module):
+    def __init__(self, model_name=MODEL_NAME):
+        super().__init__()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(DEVICE)
+
+    def forward(self, texts):
+        tokens = self.tokenizer(texts, return_tensors='pt', padding=True, truncation=True).to(DEVICE)
+        with torch.no_grad():
+            outputs = self.model(**tokens)
+        return outputs.last_hidden_state[:, 0]  # CLS token
+
+# ============================
+# 🔗 Hebbian Learner
+# ============================
+class AssociationLearner(nn.Module):
+    def __init__(self, embed_dim=EMBED_DIM, temperature=TEMPERATURE):
+        super().__init__()
+        self.proj = nn.Linear(embed_dim, embed_dim).to(DEVICE)
+        self.temperature = temperature
+        self.memory = torch.zeros((embed_dim, embed_dim), device=DEVICE)
+
+    def forward(self, emb_a, emb_b):
+        z_a = F.normalize(self.proj(emb_a), dim=-1)
+        z_b = F.normalize(self.proj(emb_b), dim=-1)
+
+        sim = torch.matmul(z_a, z_b.T) / self.temperature
+        labels = torch.arange(sim.size(0)).to(DEVICE)
+        loss = F.cross_entropy(sim, labels)
+
+        with torch.no_grad():
+            for i in range(z_a.size(0)):
+                self.memory += torch.ger(z_a[i], z_b[i]) * HEBBIAN_LR
+
+        return loss
+
+    def decay_memory(self, decay_rate=DECAY_RATE):
+        self.memory *= decay_rate
+
+# ============================
+# 💡 Full System
+# ============================
+class NeuralAssociationLearner(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = TransformerEncoder()
+        self.learner = AssociationLearner()
+
+    def forward(self, sentence_pairs):
+        a_texts, b_texts = zip(*sentence_pairs)
+        emb_a = self.encoder(list(a_texts))
+        emb_b = self.encoder(list(b_texts))
+        return self.learner(emb_a, emb_b)
+
+# ============================
+# 🏋️ Training
+# ============================
+def train_model():
+    model = NeuralAssociationLearner().to(DEVICE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    for epoch in range(EPOCHS):
+        random.shuffle(data)
+        total_loss = 0
+        for i in range(0, len(data), BATCH_SIZE):
+            batch = data[i:i+BATCH_SIZE]
+            loss = model(batch)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        model.learner.decay_memory()
+        print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.4f}")
+
+    return model
+
+# ============================
+# 🔍 Symbolic Retriever
+# ============================
+def symbolic_retriever(model, token: str, top_k=5):
+    with torch.no_grad():
+        emb = model.encoder([token])[0]
+        assoc_vector = torch.matmul(emb, model.learner.memory.T)
+        values, indices = torch.topk(assoc_vector, top_k)
+        return emb.cpu().numpy(), values.cpu().numpy(), indices.cpu().numpy()
+
+# ============================
+# 📊 Visualize Hebbian Matrix
+# ============================
+def plot_heatmap(matrix, title="Hebbian Association Heatmap"):
+    matrix_cpu = matrix.detach().cpu().numpy()
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(matrix_cpu[:50, :50], cmap='viridis')
+    plt.title(title)
+    plt.xlabel("Dimensions")
+    plt.ylabel("Dimensions")
+    plt.show()
+
+# ============================
+# 🔁 Run Everything
+# ============================
+if __name__ == "__main__":
+    model = train_model()
+
+    # Symbolic retrieval for the word "cloud"
+    query_word = "cloud"
+    _, scores, indices = symbolic_retriever(model, query_word, top_k=5)
+
+    # Print associative vector results
+    print(f"\nTop associations for '{query_word}':")
+    for i, (idx, score) in enumerate(zip(indices, scores)):
+        print(f"{i+1}. Vector Index {idx} — Score: {score:.4f}")
+
+    # Visualize Hebbian memory matrix
+    plot_heatmap(model.learner.memory)
+
+    # Visualize the learned associations
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=np.arange(len(scores)), y=scores, palette='viridis')
+    plt.title(f"Associative Scores for '{query_word}'")
+    plt.xlabel("Associated Vector Index")
+    plt.ylabel("Score")
+    plt.xticks(np.arange(len(scores)), indices, rotation=45)
+    plt.tight_layout()
+
+    plt.show()
+ 
+    print("[Interpreter] Tempercore Web Server is running...")
+    import http.server
+    import socketserver
+
+    class SimpleHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+
+self.wfile.write(b"<html><body><h1>Welcome to Tempercore Web Server!</h1></body></html>")  # type: ignore
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
+import random
+import networkx as nx
+import matplotlib.pyplot as plt
+from itertools import combinations
+
+# Configurations
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+MODEL_NAME = 'distilbert-base-uncased'
+EMBED_DIM = 768
+TEMPERATURE = 0.07
+HEBBIAN_LR = 0.01
+DECAY_RATE = 0.98
+BATCH_SIZE = 2
+EPOCHS = 5
+TOP_K_EDGES = 3
+
+# Sentence-level association data
+data = [
+    ("The fire spread quickly through the forest.", "Smoke filled the sky above the trees."),
+    ("A teacher was preparing notes for her class.", "The classroom was quiet before the students arrived."),
+    ("Clouds gathered over the mountain range.", "Rain began to fall gently on the valley."),
+    ("Birds soared high above the cliffs.", "The sky was painted with wings in motion."),
+    ("She picked a book from the dusty shelf.", "The library was her favorite place to hide."),
+    ("The lake had frozen solid overnight.", "The air was sharp and cold on her skin."),
+    ("He sliced the bread with care.", "Butter melted instantly on the warm crust."),
+    ("She reached for the phone.", "The call came just as she expected."),
+]
+
+# Transformer Encoder
+class TransformerEncoder(nn.Module):
+    def __init__(self, model_name=MODEL_NAME):
+        super().__init__()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(DEVICE)
+
+    def forward(self, texts):
+        tokens = self.tokenizer(texts, return_tensors='pt', padding=True, truncation=True).to(DEVICE)
+        with torch.no_grad():
+            outputs = self.model(**tokens)
+        return outputs.last_hidden_state[:, 0]
+
+# Hebbian Association Learner
+class AssociationLearner(nn.Module):
+    def __init__(self, embed_dim=EMBED_DIM, temperature=TEMPERATURE):
+        super().__init__()
+        self.proj = nn.Linear(embed_dim, embed_dim).to(DEVICE)
+        self.temperature = temperature
+        self.memory = torch.zeros((embed_dim, embed_dim), device=DEVICE)
+
+    def forward(self, emb_a, emb_b):
+        z_a = F.normalize(self.proj(emb_a), dim=-1)
+        z_b = F.normalize(self.proj(emb_b), dim=-1)
+
+        sim = torch.matmul(z_a, z_b.T) / self.temperature
+        labels = torch.arange(sim.size(0)).to(DEVICE)
+        loss = F.cross_entropy(sim, labels)
+
+        with torch.no_grad():
+            for i in range(z_a.size(0)):
+                self.memory += torch.ger(z_a[i], z_b[i]) * HEBBIAN_LR
+
+        return loss
+
+    def decay_memory(self, decay_rate=DECAY_RATE):
+        self.memory *= decay_rate
+
+# Complete model
+class NeuralAssociationLearner(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = TransformerEncoder()
+        self.learner = AssociationLearner()
+
+    def forward(self, sentence_pairs):
+        a_texts, b_texts = zip(*sentence_pairs)
+        emb_a = self.encoder(list(a_texts))
+        emb_b = self.encoder(list(b_texts))
+        return self.learner(emb_a, emb_b)
+
+# Train model
+def train_model():
+    model = NeuralAssociationLearner().to(DEVICE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    for epoch in range(EPOCHS):
+        random.shuffle(data)
+        total_loss = 0
+        for i in range(0, len(data), BATCH_SIZE):
+            batch = data[i:i+BATCH_SIZE]
+            loss = model(batch)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        model.learner.decay_memory()
+        print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.4f}")
+    return model
+
+# Graph network for sentence association
+def build_association_graph(model, sentences, top_k=TOP_K_EDGES):
+    encodings = model.encoder(sentences)
+    G = nx.Graph()
+
+    for i, sent in enumerate(sentences):
+        G.add_node(i, label=sent)
+
+    for i, j in combinations(range(len(sentences)), 2):
+        emb_i = encodings[i]
+        emb_j = encodings[j]
+        assoc_score = torch.dot(emb_i, torch.matmul(model.learner.memory, emb_j))
+        G.add_edge(i, j, weight=assoc_score.item())
+
+    return G
+
+# Multi-hop path tracing
+def trace_multi_hop_paths(G, source_idx, hops=2):
+    paths = nx.single_source_dijkstra_path(G, source=source_idx, cutoff=hops)
+    return paths
+
+# Visualize graph
+def visualize_graph(G):
+    pos = nx.spring_layout(G, seed=42)
+    labels = nx.get_node_attributes(G, 'label')
+    weights = [G[u][v]['weight'] for u, v in G.edges()]
+    nx.draw(G, pos, with_labels=True, labels=labels, width=weights, node_color='lightblue', node_size=1500, font_size=8)
+    plt.title("Sentence Association Graph")
+    plt.show()
+
+# Execute pipeline
+model = train_model()
+all_sentences = list(set([s for pair in data for s in pair]))
+graph = build_association_graph(model, all_sentences)
+visualize_graph(graph)
+paths = trace_multi_hop_paths(graph, 0, hops=2)
+
+# Output paths
+import pandas as pd
+formatted_paths = pd.DataFrame([[k, ' -> '.join(str(i) for i in v)] for k, v in paths.items()], columns=["Target Node", "Path"])
+import ace_tools as tools; tools.display_dataframe_to_user(name="Multi-Hop Association Paths", dataframe=formatted_paths)
+
+# In temperc (e.g., interpreter_visual.py or compiler core)
+declared_symbols = set()
+
+def strict_define_pass(ast_nodes):
+    for node in ast_nodes:
+        if node.type == "DefineStmt":
+            declared_symbols.add(node.name)
+        elif node.type == "IdentifierExpr":
+            if node.name not in declared_symbols:
+                os.error(f"TEMPERCORE::E001: '{node.name}' used before define declaration at line {node.line}")
+                sys.exit(1)
+        # descend into child nodes...
+
+pipeline = []
+    load_file: Any, # type: ignore
+    parse_to_ast, # type: ignore
+    strict_define_pass,     # 🧩 enforce define rule here
+    resolve_imports, # type: ignore
+    inject_stdlib: any, # type: ignore
+    generate_python, # type: ignore # type: ignore
+    emit_output # type: ignore
+    []
+
+    if config.strict_define:
+        strict_define_pass(ast)
+
+    def eval_identifier(node):
+        if node.name not in declared_symbols:
+            raise RuntimeError(f"TEMPERCORE::E001: '{node.name}' used before define declaration")
+    return runtime_env[node.name] # type: ignore
+
+    def eval_define(node):
+        if node.name in declared_symbols:
+            raise RuntimeError(f"TEMPERCORE::E002: '{node.name}' already defined")
+    declared_symbols.add(node.name)
+    runtime_env[node.name] = eval_expression(node.value)  # type: ignore # Evaluate the value expression
+
