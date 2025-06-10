@@ -1,0 +1,5 @@
+# enforce_define = true
+define MAX = 100
+let x = MAX + 5    # ✅ OK
+
+let y = UNDEF + 1  # 🚨 TEMPERCORE::E001 error
