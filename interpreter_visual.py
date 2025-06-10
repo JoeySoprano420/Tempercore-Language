@@ -7534,3 +7534,259 @@ if __name__ == "__main__":
     run_tempercore_command("heap clear")  # Clear heap
 
     run_tempercore_command("heap dump")  # Dump heap contents after clearing
+
+    run_tempercore_command("stack push 42 stack push 84 stack pop stack pop")  # Push and pop some values
+    run_tempercore_command("stack size")  # Check stack size after operations
+    run_tempercore_command("compile stack push 1 stack push 2 add")  # Compile a simple add operation
+
+    run_tempercore_command("compile stack push 3 stack push 4 mul")  # Compile a simple multiply operation
+    run_tempercore_command("compile vector_add v0 a0 b0 vector_mul v1 a1 b1")  # Compile vector operations
+
+    run_tempercore_command("heap allocate myvar5 Tempercore heap get myvar5")  # Allocate and retrieve a string from heap
+
+    run_tempercore_command("heap allocate myvar6 67890 heap get myvar6")  # Allocate and retrieve an integer from heap
+
+    run_tempercore_command("heap keys")  # List all keys in heap
+
+    run_tempercore_command("heap delete myvar5")  # Delete a variable from heap
+    run_tempercore_command("heap dump")  # Dump heap contents after deletion
+    run_tempercore_command("heap clear")  # Clear heap
+
+    import threading
+import http.server
+import socketserver
+import tkinter as tk
+import math
+import statistics
+import os
+import time
+import curses
+
+# --- Web Extension: Real HTTP Server ---
+class WebExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "web":
+            if len(tokens) < 2:
+                print("[Web] Missing subcommand.")
+                return True
+            if tokens[1] == "serve":
+                # web serve <port>
+                port = int(tokens[2]) if len(tokens) > 2 else 8080
+                handler = http.server.SimpleHTTPRequestHandler
+                def serve():
+                    with socketserver.TCPServer(("", port), handler) as httpd:
+                        print(f"[Web] Serving HTTP on port {port} (Ctrl+C to stop)...")
+                        try:
+                            httpd.serve_forever()
+                        except KeyboardInterrupt:
+                            print("[Web] Server stopped.")
+                threading.Thread(target=serve, daemon=True).start()
+                return True
+            elif tokens[1] == "request":
+                # web request <url>
+                import urllib.request
+                if len(tokens) < 3:
+                    print("[Web] 'request' requires a URL.")
+                    return True
+                url = tokens[2]
+                try:
+                    with urllib.request.urlopen(url) as resp:
+                        content = resp.read(200)
+                        print(f"[Web] GET {url} -> {resp.status}\n{content.decode(errors='replace')}...")
+                except Exception as e:
+                    print(f"[Web] Request error: {e}")
+                return True
+            else:
+                print("[Web] Unknown web command")
+                return True
+        return False
+    def help(self):
+        return "web serve <port>, web request <url>"
+
+# --- GUI Extension: Real Tkinter UI ---
+class GUIExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "gui":
+            if len(tokens) < 2:
+                print("[GUI] Missing subcommand.")
+                return True
+            if tokens[1] == "window":
+                title = " ".join(tokens[2:]) if len(tokens) > 2 else "Tempercore Window"
+                def show_window():
+                    root = tk.Tk()
+                    root.title(title)
+                    tk.Label(root, text=title).pack()
+                    root.mainloop()
+                threading.Thread(target=show_window, daemon=True).start()
+                return True
+            elif tokens[1] == "button":
+                label = " ".join(tokens[2:]) if len(tokens) > 2 else "Button"
+                def show_button():
+                    root = tk.Tk()
+                    tk.Button(root, text=label, command=root.destroy).pack()
+                    root.mainloop()
+                threading.Thread(target=show_button, daemon=True).start()
+                return True
+            elif tokens[1] == "label":
+                text = " ".join(tokens[2:]) if len(tokens) > 2 else "Label"
+                def show_label():
+                    root = tk.Tk()
+                    tk.Label(root, text=text).pack()
+                    root.mainloop()
+                threading.Thread(target=show_label, daemon=True).start()
+                return True
+            else:
+                print("[GUI] Unknown GUI command")
+                return True
+        return False
+    def help(self):
+        return "gui window <title>, gui button <label>, gui label <text>"
+
+# --- ML Extension: Pure Python Linear Regression ---
+class MLExtension(Extension):
+    def __init__(self):
+        self.models = {}
+
+    def handle(self, tokens):
+        if tokens[0] == "ml":
+            if len(tokens) < 2:
+                print("[ML] Missing subcommand.")
+                return True
+            if tokens[1] == "train":
+                # ml train <modelname> <x1,x2,...> <y1,y2,...>
+                if len(tokens) < 5:
+                    print("[ML] Usage: ml train <modelname> <x1,x2,...> <y1,y2,...>")
+                    return True
+                name = tokens[2]
+                X = [float(x) for x in tokens[3].split(",")]
+                y = [float(v) for v in tokens[4].split(",")]
+                if len(X) != len(y):
+                    print("[ML] X and y must be same length.")
+                    return True
+                # Simple linear regression: y = a*x + b
+                n = len(X)
+                mean_x = statistics.mean(X)
+                mean_y = statistics.mean(y)
+                numer = sum((X[i] - mean_x) * (y[i] - mean_y) for i in range(n))
+                denom = sum((X[i] - mean_x) ** 2 for i in range(n))
+                a = numer / denom if denom != 0 else 0
+                b = mean_y - a * mean_x
+                self.models[name] = (a, b)
+                print(f"[ML] Trained model '{name}': y = {a:.4f}*x + {b:.4f}")
+                return True
+            elif tokens[1] == "predict":
+                # ml predict <modelname> <x>
+                if len(tokens) < 4:
+                    print("[ML] Usage: ml predict <modelname> <x>")
+                    return True
+                name = tokens[2]
+                x = float(tokens[3])
+                if name not in self.models:
+                    print(f"[ML] Model '{name}' not found.")
+                    return True
+                a, b = self.models[name]
+                y = a * x + b
+                print(f"[ML] Prediction: {y:.4f}")
+                return True
+            elif tokens[1] == "evaluate":
+                # ml evaluate <modelname> <x1,x2,...> <y1,y2,...>
+                if len(tokens) < 5:
+                    print("[ML] Usage: ml evaluate <modelname> <x1,x2,...> <y1,y2,...>")
+                    return True
+                name = tokens[2]
+                X = [float(x) for x in tokens[3].split(",")]
+                y = [float(v) for v in tokens[4].split(",")]
+                if name not in self.models:
+                    print(f"[ML] Model '{name}' not found.")
+                    return True
+                a, b = self.models[name]
+                preds = [a * xi + b for xi in X]
+                mse = sum((yi - pi) ** 2 for yi, pi in zip(y, preds)) / len(y)
+                print(f"[ML] MSE: {mse:.6f}")
+                return True
+            else:
+                print("[ML] Unknown ML command")
+                return True
+        return False
+    def help(self):
+        return "ml train <model> <x1,x2,...> <y1,y2,...>, ml predict <model> <x>, ml evaluate <model> <x1,x2,...> <y1,y2,...>"
+
+# --- Mobile Extension: Local App Package Structure ---
+class MobileExtension(Extension):
+    def handle(self, tokens):
+        if tokens[0] == "mobile":
+            if len(tokens) < 2:
+                print("[Mobile] Missing subcommand.")
+                return True
+            if tokens[1] == "build":
+                # mobile build <platform>
+                platform_name = tokens[2] if len(tokens) > 2 else "generic"
+                app_dir = f"mobile_app_{platform_name}"
+                os.makedirs(app_dir, exist_ok=True)
+                with open(os.path.join(app_dir, "main.py"), "w") as f:
+                    f.write("# Entry point for mobile app\n")
+                print(f"[Mobile] Created app package: {app_dir}/main.py")
+                return True
+            elif tokens[1] == "deploy":
+                # mobile deploy <device>
+                device = tokens[2] if len(tokens) > 2 else "emulator"
+                print(f"[Mobile] (Local) Deploying to {device} (no real device interaction).")
+                return True
+            else:
+                print("[Mobile] Unknown mobile command")
+                return True
+        return False
+    def help(self):
+        return "mobile build <platform>, mobile deploy <device>"
+
+# --- Game Extension: Real Game Loop (Curses) ---
+class GameExtension(Extension):
+    def __init__(self):
+        self.state = {"entities": [], "running": False}
+
+    def handle(self, tokens):
+        if tokens[0] == "game":
+            if len(tokens) < 2:
+                print("[Game] Missing subcommand.")
+                return True
+            if tokens[1] == "start":
+                print("[Game] Starting game loop (press 'q' to quit)...")
+                self.state["running"] = True
+                threading.Thread(target=self.game_loop, daemon=True).start()
+                return True
+            elif tokens[1] == "entity":
+                name = " ".join(tokens[2:]) if len(tokens) > 2 else f"entity{len(self.state['entities'])}"
+                self.state["entities"].append({"name": name, "x": 1, "y": 1})
+                print(f"[Game] Created entity: {name}")
+                return True
+            elif tokens[1] == "event":
+                print("[Game] Event system not implemented.")
+                return True
+            else:
+                print("[Game] Unknown game command")
+                return True
+        return False
+
+    def game_loop(self):
+        def curses_loop(stdscr):
+            stdscr.nodelay(True)
+            while self.state["running"]:
+                stdscr.clear()
+                stdscr.addstr(0, 0, "Tempercore Game Loop (press 'q' to quit)")
+                for idx, ent in enumerate(self.state["entities"]):
+                    stdscr.addstr(2 + idx, 2, f"Entity: {ent['name']} at ({ent['x']},{ent['y']})")
+                stdscr.refresh()
+                try:
+                    key = stdscr.getkey()
+                    if key == 'q':
+                        self.state["running"] = False
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.1)
+        curses.wrapper(curses_loop)
+
+    def help(self):
+
+        return "game start, game entity <name>, game event <type>"
+
