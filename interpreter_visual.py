@@ -5291,3 +5291,96 @@ branch_code = se.execute_branch(True, ["label_true:"], ["label_false:"], "branch
 print("Executed Branch Path:", branch_code)
 se.commit(actual_taken=True)
 
+class Stack:
+    def __init__(self):
+        self.stack = []
+        self.lock = threading.Lock()
+
+    def push(self, val):
+        with self.lock:
+            self.stack.append(val)
+            self.display()
+
+    def pop(self):
+        with self.lock:
+            if not self.stack:
+                print("[Stack] Underflow error: stack is empty.")
+                return None
+            val = self.stack.pop()
+            self.display()
+            return val
+
+        def top(self):
+            with self.lock:
+                if not self.stack:
+                    print("[Stack] Underflow error: stack is empty.")
+                    return None
+                return self.stack[-1]
+
+class Heap:
+    def __init__(self):
+        self.heap = {}
+        self.ref_count = {}
+        self.lock = threading.Lock()
+
+    def allocate(self, name, value):
+        with self.lock:
+            self.heap[name] = value
+            self.ref_count[name] = 1
+            self.display()
+
+    def retrieve(self, name):
+        with self.lock:
+            if name in self.heap:
+                self.ref_count[name] += 1
+            return self.heap.get(name, None)
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.heap:
+                self.ref_count[name] -= 1
+                if self.ref_count[name] <= 0:
+                    del self.heap[name]
+                    del self.ref_count[name]
+                    self.display()
+
+class CodeGenerator:
+    # ...
+    def generate_div(self):
+        self.emit("    ; div")
+        self.emit("    pop rbx")  # divisor
+        self.emit("    pop rax")  # dividend
+        self.emit("    xor rdx, rdx")  # Ensure rdx is zero before cqo
+        self.emit("    cqo")
+        self.emit("    idiv rbx")
+        self.emit("    push rax")
+
+        self.emit("    push rdx")  # remainder
+
+        self.emit("    push rax")  # quotient
+
+import os
+
+class MachineCodeExtension(Extension):
+    def handle(self, tokens):
+        # ... (existing code) ...
+        try:
+            size = len(machine_code)
+            mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+            mm.write(machine_code)
+            mm.seek(0)
+            FUNC_TYPE = ctypes.CFUNCTYPE(None)
+            address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+            if not address:
+                print("[JIT] Invalid function pointer. Aborting execution.")
+                mm.close()
+                return True
+            func = FUNC_TYPE(address)
+            print("\n[JIT] Executing machine code (may not print output, but will exit):")
+            func()
+            mm.close()
+        except Exception as e:
+            print(f"[JIT] Execution error: {e}")
+
+            return True
+        
