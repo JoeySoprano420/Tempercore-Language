@@ -5173,7 +5173,121 @@ with open("output.asm", "w") as f:
 print("✅ Compilation complete. Attempting JIT Execution:")
 assemble_and_execute(asm_code)
 
+# register_allocator.py
 
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or ["rax", "rbx", "rcx", "rdx", "rsi", "rdi"]
+        self.free = set(self.registers)
+        self.alloc_map = {}
 
+    def allocate(self, var):
+        if var in self.alloc_map:
+            return self.alloc_map[var]
+        if not self.free:
+            raise RuntimeError("No free registers available.")
+        reg = self.free.pop()
+        self.alloc_map[var] = reg
+        return reg
 
+    def release(self, var):
+        if var in self.alloc_map:
+            reg = self.alloc_map.pop(var)
+            self.free.add(reg)
+
+    def dump(self):
+        print("[Register Allocator] Current mapping:", self.alloc_map)
+
+# bytecode_compressor.py
+
+def rle_compress(instructions):
+    compressed = []
+    prev = None
+    count = 1
+    for instr in instructions:
+        if instr == prev:
+            count += 1
+        else:
+            if prev is not None:
+                if count > 1:
+                    compressed.append(f"{prev} * {count}")
+                else:
+                    compressed.append(prev)
+            prev = instr
+            count = 1
+    if prev:
+        compressed.append(f"{prev} * {count}" if count > 1 else prev)
+    return compressed
+
+def fold_redundant_loads(instructions):
+    folded = []
+    last_load = None
+    for instr in instructions:
+        if instr.startswith("mov") and instr == last_load:
+            continue  # skip redundant load
+        folded.append(instr)
+        last_load = instr if instr.startswith("mov") else None
+    return folded
+
+def compress_bytecode(instructions):
+    # You can layer in more compression passes here
+    folded = fold_redundant_loads(instructions)
+    return rle_compress(folded)
+
+# speculative_executor.py
+
+class SpeculativeExecutor:
+    def __init__(self):
+        self.history = []
+        self.branch_table = {}
+        self.rollback_stack = []
+
+    def predict(self, branch_label):
+        # Predict whether the branch will be taken or not (default: True)
+        prediction = self.branch_table.get(branch_label, True)
+        print(f"[SpeculativeExec] Predicting branch '{branch_label}' ->", prediction)
+        return prediction
+
+    def execute_branch(self, condition, true_path, false_path, label):
+        prediction = self.predict(label)
+        # Save rollback info in case of misprediction
+        self.rollback_stack.append((label, true_path, false_path))
+        return true_path if prediction else false_path
+
+    def commit(self, actual_taken):
+        label, true_path, false_path = self.rollback_stack.pop()
+        prediction = self.branch_table.get(label, True)
+        self.branch_table[label] = actual_taken
+        if prediction != actual_taken:
+            print(f"[SpeculativeExec] Misprediction! Rewinding and correcting '{label}'")
+            # Return the correct execution path to follow after correction
+            return false_path if actual_taken else true_path
+        print(f"[SpeculativeExec] Prediction correct for '{label}'")
+        return None
+
+from register_allocator import RegisterAllocator
+from bytecode_compressor import compress_bytecode
+from speculative_executor import SpeculativeExecutor
+
+# Example usage:
+ra = RegisterAllocator()
+print("Allocated:", ra.allocate("x"))
+ra.dump()
+
+bytecode = [
+    "mov rax, 1",
+    "mov rax, 1",
+    "mov rax, 1",
+    "add",
+    "add",
+    "add"
+]
+
+compressed = compress_bytecode(bytecode)
+print("Compressed Bytecode:", compressed)
+
+se = SpeculativeExecutor()
+branch_code = se.execute_branch(True, ["label_true:"], ["label_false:"], "branch1")
+print("Executed Branch Path:", branch_code)
+se.commit(actual_taken=True)
 
