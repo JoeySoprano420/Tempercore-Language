@@ -4581,4 +4581,134 @@ class OptimizedHeap:
 
 heap = OptimizedHeap()
 
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        # General-purpose and SIMD registers
+        self.registers = registers or ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+        self.usage_order = []
+
+    def alloc(self):
+        if not self.free:
+            # Simple spill: free the least recently used
+            reg = self.usage_order.pop(0)
+            self.in_use.remove(reg)
+            self.free.add(reg)
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        self.usage_order.append(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+            if reg in self.usage_order:
+                self.usage_order.remove(reg)
+
+    def reset(self):
+        self.free = set(self.registers)
+        self.in_use.clear()
+        self.usage_order.clear()
+
+        def display(self):
+            print("\n[REGISTER ALLOCATOR]")
+            print("Free Registers:", self.free)
+            print("In Use Registers:", self.in_use)
+            print("Usage Order:", self.usage_order)
+            print("-" * 20)
+
+            def allocate(self, name, size):
+                with self.lock:
+                    if not self.free_blocks:
+                        raise MemoryError("Out of memory in pool")
+                    block = self.free_blocks.pop()
+                    self.alloc_map[name] = (block, size)
+                    return memoryview(self.pool)[block:block+size]
+
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator(['ymm0', 'ymm1', 'ymm2', 'ymm3'])  # AVX2 YMM registers
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_vector_add(self, dest, src1, src2):
+        self.emit(f"    vaddps {dest}, {src1}, {src2}")
+
+    def generate_vector_mul(self, dest, src1, src2):
+        self.emit(f"    vmulps {dest}, {src1}, {src2}")
+
+    def generate_fma(self, dest, src1, src2, src3):
+        self.emit(f"    vfmadd231ps {dest}, {src1}, {src2}")  # FMA: dest = src1*src2 + dest
+
+        def compile(self):
+            code = "\n".join(self.instructions)
+            encoding, _ = self.ks.asm(code)
+            return bytes(encoding)
+
+        def execute(self, machine_code):
+            size = len(machine_code)
+            mem = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+            mem.write(machine_code)
+            func_ptr = ctypes.c_void_p(ctypes.addressof(ctypes.c_char.from_buffer(mem)))
+            ctypes.CFUNCTYPE(None)(func_ptr.value)()
+            mem.close()
+
+            def generate_add(self, reg1, reg2):
+                self.emit(f"    mov {reg1}, {reg2}")  # Move reg2 to reg1
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    add {reg1}, {reg2}")
+                self.reg_alloc.free_reg(reg2)
+                self.emit(f"    add {reg1}, {reg2}")
+                self.reg_alloc.free_reg(reg2)
+
+                def generate_simd_add(self, a, b, tokens):
+                    # AVX2: vaddps ymm_dest, ymm_src1, ymm_src2
+                    result = f"vaddps {tokens[0]}, {tokens[1]}, {tokens[2]}"    
+                    self.emit(result)
+                    return result
+
+                def generate_vector_add(self, dest, src1, src2):
+                    # AVX2: vaddps ymm_dest, ymm_src1, ymm_src2
+                    self.emit(f"    vaddps {dest}, {src1}, {src2}")
+                    return f"vaddps {dest}, {src1}, {src2}"
+                self.reg_alloc.display()
+
+                def allocate(self, name, size):
+                    with self.lock:
+                        if not self.free_blocks:
+                            raise MemoryError("Out of memory in pool")
+                        block = self.free_blocks.pop()
+                        self.alloc_map[name] = (block, size)
+                        return memoryview(self.pool)[block:block+size]
+
+                    def display(self):
+                        print("\n[REGISTER ALLOCATOR]")
+                        print("Free Registers:", self.free)
+                        print("In Use Registers:", self.in_use)
+                        print("Usage Order:", self.usage_order)
+                        print("-" * 20)
+
+                        def reset(self):
+                            self.free = set(self.registers)
+                            self.in_use.clear()
+                            self.usage_order.clear()
+                            self.display()
+
+                            return None
+
+                        def generate_vector_mul(self, dest, src1, src2):
+                            # AVX2: vmulps ymm_dest, ymm_src1, ymm_src2
+                            self.emit(f"    vmulps {dest}, {src1}, {src2}")
+                            return f"vmulps {dest}, {src1}, {src2}"
+                        def generate_fma(self, dest, src1, src2, src3):
+                            # AVX2: vfmadd231ps ymm_dest, ymm_src1, ymm_src2
+                            self.emit(f"    vfmadd231ps {dest}, {src1}, {src2}")
+                            return f"vfmadd231ps {dest}, {src1}, {src2}"
+
+
+
 
