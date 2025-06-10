@@ -1,0 +1,5 @@
+define PI = 3.14
+let r = 5
+let area = PI * r * r    # ✅ Valid
+
+let bad = UNDEF_CONST + 10  # 🚫 Raises TEMPERCORE::E001
