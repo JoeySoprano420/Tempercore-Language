@@ -8922,3 +8922,4 @@ if __name__ == "__main__":
                         if tokens[0] == "game":
                             if len(tokens) < 2:
                                 print("[Interpreter] Missing game command.")
+
