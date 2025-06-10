@@ -1,4 +1,3 @@
-# temperc_lexer.py
 import re
 
 def tokenize(code):
@@ -9,6 +8,7 @@ def tokenize(code):
         ('ID',       r'[A-Za-z_][A-Za-z0-9_]*'),
         ('STRING',   r'"[^"]*"'),
         ('OP',       r'[\+\-\*/%]'),
+        ('KEYWORD',  r'\b(let|define|append|if|then|while|do|stack|heap|var|getvar|delvar|vars|clearvars|compile|label|jmp|jz|jnz|call|ret|add|sub|mul|div|mod|neg|cmp|print|pause|break|continue|nop|error)\b'),
         ('NEWLINE',  r'\n'),
         ('SKIP',     r'[ \t]+'),
         ('MISMATCH', r'.')
@@ -29,65 +29,171 @@ def tokenize(code):
         tokens.append((kind, value))
     return tokens
 
-# temperc_parser.py
 def parse(tokens):
     ast = []
     idx = 0
     while idx < len(tokens):
-        if tokens[idx][1] == 'let':
+        kind, val = tokens[idx]
+        if val == 'let':
             var = tokens[idx+1][1]
-            val = tokens[idx+3][1]
-            ast.append(('assign', var, val))
+            value = tokens[idx+3][1]
+            ast.append(('assign', var, value))
             idx += 4
-        elif tokens[idx][1] == 'define':
-            if tokens[idx+1][1] == 'list':
-                name = tokens[idx+2][1]
-                ast.append(('list_decl', name))
-                idx += 4
-        elif tokens[idx][1] == 'append':
-            val = tokens[idx+1][1]
+        elif val == 'define' and tokens[idx+1][1] == 'list':
+            name = tokens[idx+2][1]
+            ast.append(('list_decl', name))
+            idx += 4
+        elif val == 'append':
+            value = tokens[idx+1][1]
             name = tokens[idx+3][1]
-            ast.append(('append', name, val))
+            ast.append(('append', name, value))
             idx += 4
+        elif val == 'stack':
+            if tokens[idx+1][1] == 'push':
+                ast.append(('stack_push', tokens[idx+2][1]))
+                idx += 3
+            elif tokens[idx+1][1] == 'pop':
+                ast.append(('stack_pop',))
+                idx += 2
+        elif val == 'heap':
+            action = tokens[idx+1][1]
+            if action == 'allocate':
+                name = tokens[idx+2][1]
+                value = tokens[idx+3][1]
+                ast.append(('heap_alloc', name, value))
+                idx += 4
+            elif action == 'delete':
+                name = tokens[idx+2][1]
+                ast.append(('heap_delete', name))
+                idx += 3
+        elif val == 'print':
+            ast.append(('print',))
+            idx += 1
+        elif val in {'add', 'sub', 'mul', 'div', 'mod', 'neg', 'cmp'}:
+            ast.append(('op', val))
+            idx += 1
+        elif val == 'label':
+            label = tokens[idx+1][1]
+            ast.append(('label', label))
+            idx += 2
+        elif val in {'jmp', 'jz', 'jnz', 'call'}:
+            label = tokens[idx+1][1]
+            ast.append(('jump', val, label))
+            idx += 2
+        elif val == 'ret':
+            ast.append(('ret',))
+            idx += 1
         else:
             idx += 1
     return ast
 
-# divseq_generator.py
 def generate_divseq(ast):
     lines = []
     for node in ast:
         if node[0] == 'assign':
-            lines.append(f"LOAD_CONST {node[1]}, {node[2]}")
+            lines.append(f"var {node[1]} {node[2]}")
         elif node[0] == 'list_decl':
-            lines.append(f"ALLOC_ARRAY {node[1]}, STRING")
+            lines.append(f"list {node[1]}")
         elif node[0] == 'append':
-            lines.append(f'APPEND {node[1]}, "{node[2]}"')
+            lines.append(f"append {node[1]} {node[2]}")
+        elif node[0] == 'stack_push':
+            lines.append(f"stack push {node[1]}")
+        elif node[0] == 'stack_pop':
+            lines.append("stack pop")
+        elif node[0] == 'heap_alloc':
+            lines.append(f"heap allocate {node[1]} {node[2]}")
+        elif node[0] == 'heap_delete':
+            lines.append(f"heap delete {node[1]}")
+        elif node[0] == 'print':
+            lines.append("print")
+        elif node[0] == 'op':
+            lines.append(node[1])
+        elif node[0] == 'label':
+            lines.append(f"label {node[1]}")
+        elif node[0] == 'jump':
+            lines.append(f"{node[1]} {node[2]}")
+        elif node[0] == 'ret':
+            lines.append("ret")
     return lines
 
-# asm_generator.py
 def divseq_to_nasm(ir):
-    asm = ["section .data"]
+    asm = ["section .text", "global _start", "_start:"]
     for line in ir:
-        if line.startswith("LOAD_CONST"):
-            _, var, val = line.split()
-            asm.append(f"{var} dq {val}")
-        elif line.startswith("ALLOC_ARRAY"):
-            _, name, _ = line.split()
-            asm.append(f"{name} times 10 dq 0")
-    asm.append("\nsection .text")
-    asm.append("global _start")
-    asm.append("_start:")
-    asm.append("    mov rax, 60")
-    asm.append("    xor rdi, rdi")
-    asm.append("    syscall")
+        tokens = line.split()
+        cmd = tokens[0]
+        if cmd == "stack" and tokens[1] == "push":
+            asm.append(f"    mov rax, {tokens[2]}")
+            asm.append("    push rax")
+        elif cmd == "stack" and tokens[1] == "pop":
+            asm.append("    pop rax")
+        elif cmd == "add":
+            asm += ["    pop rax", "    pop rbx", "    add rax, rbx", "    push rax"]
+        elif cmd == "sub":
+            asm += ["    pop rax", "    pop rbx", "    sub rbx, rax", "    push rbx"]
+        elif cmd == "mul":
+            asm += ["    pop rax", "    pop rbx", "    imul rax, rbx", "    push rax"]
+        elif cmd == "div":
+            asm += ["    pop rbx", "    pop rax", "    cqo", "    idiv rbx", "    push rax"]
+        elif cmd == "mod":
+            asm += ["    pop rbx", "    pop rax", "    cqo", "    idiv rbx", "    push rdx"]
+        elif cmd == "neg":
+            asm += ["    pop rax", "    neg rax", "    push rax"]
+        elif cmd == "label":
+            asm.append(f"{tokens[1]}:")
+        elif cmd in {"jmp", "jz", "jnz"}:
+            if cmd in {"jz", "jnz"}:
+                asm.append("    pop rax")
+                asm.append("    test rax, rax")
+            asm.append(f"    {cmd} {tokens[1]}")
+        elif cmd == "ret":
+            asm.append("    ret")
+        elif cmd == "call":
+            asm.append(f"    call {tokens[1]}")
+        elif cmd == "print":
+            asm.append("    ; print (not implemented)")
+        elif cmd == "var":
+            asm.append(f"    ; var {tokens[1]} = {tokens[2]}")
+        elif cmd == "heap":
+            asm.append(f"    ; {line}")
+        elif cmd == "nop":
+            asm.append("    nop")
+    asm += ["    mov rax, 60", "    xor rdi, rdi", "    syscall"]
     return asm
 
-# main.py
+from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+import mmap
+import ctypes
+
+def assemble_and_execute(asm_code):
+    print("\n[🔧 AOT+JIT] Assembling and Executing...")
+
+    try:
+        ks = Ks(KS_ARCH_X86, KS_MODE_64)
+        encoding, count = ks.asm(asm_code)
+        machine_code = bytes(encoding)
+        print("[Keystone] Machine code (hex):", machine_code.hex())
+
+        # Allocate RWX memory and execute
+        size = len(machine_code)
+        mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+        mm.write(machine_code)
+        mm.seek(0)
+
+        FUNC_TYPE = ctypes.CFUNCTYPE(None)
+        address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+        func = FUNC_TYPE(address)
+
+        print("[JIT] Executing machine code now:")
+        func()
+        mm.close()
+    except Exception as e:
+        print("[Error] JIT Execution Failed:", str(e))
+
 from temperc_lexer import tokenize
 from temperc_parser import parse
 from divseq_generator import generate_divseq
 from asm_generator import divseq_to_nasm
+from jit_exec import assemble_and_execute
 
 with open("input.tpc", "r") as f:
     code = f.read()
@@ -100,8 +206,12 @@ with open("output.divseq", "w") as f:
     f.write("\n".join(ir))
 
 asm = divseq_to_nasm(ir)
-with open("output.asm", "w") as f:
-    f.write("\n".join(asm))
+asm_code = "\n".join(asm)
 
-print("✅ Compilation pipeline complete.")
+with open("output.asm", "w") as f:
+    f.write(asm_code)
+
+print("✅ Compilation complete. Attempting JIT Execution:")
+assemble_and_execute(asm_code)
+
 
