@@ -8922,4 +8922,794 @@ if __name__ == "__main__":
                         if tokens[0] == "game":
                             if len(tokens) < 2:
                                 print("[Interpreter] Missing game command.")
+# World's Best Compiler EVER: Tempercore Supreme Edition
+# This integrates: parsing, IR, optimization, SIMD, AOT/JIT, register allocation, bytecode compression, and extensions.
 
+import threading
+import mmap
+import ctypes
+import numpy as np
+import multiprocessing as mp
+import re
+from collections import defaultdict
+
+try:
+    from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+    KEYSTONE_AVAILABLE = True
+except ImportError:
+    KEYSTONE_AVAILABLE = False
+
+# --- Tokenizer ---
+def tokenize(code):
+    return re.findall(r'\"[^\"]*\"|\w+|[^\s\w]', code)
+
+# --- Parser: Simple IR for Stack/Heap/Math/Control ---
+def parse(tokens):
+    ast = []
+    idx = 0
+    while idx < len(tokens):
+        t = tokens[idx]
+        if t == "stack" and idx+2 < len(tokens) and tokens[idx+1] == "push":
+            ast.append(('stack_push', tokens[idx+2]))
+            idx += 3
+        elif t == "stack" and idx+1 < len(tokens) and tokens[idx+1] == "pop":
+            ast.append(('stack_pop',))
+            idx += 2
+        elif t in {"add", "sub", "mul", "div", "mod", "neg"}:
+            ast.append((t,))
+            idx += 1
+        elif t == "label" and idx+1 < len(tokens):
+            ast.append(('label', tokens[idx+1]))
+            idx += 2
+        elif t in {"jmp", "jz", "jnz"} and idx+1 < len(tokens):
+            ast.append((t, tokens[idx+1]))
+            idx += 2
+        elif t == "print":
+            ast.append(('print',))
+            idx += 1
+        else:
+            idx += 1
+    return ast
+
+# --- IR Optimizations: Inlining, Unrolling, Compression ---
+def inline_functions(ir, func_defs):
+    inlined = []
+    for instr in ir:
+        if instr[0] == 'call' and instr[1] in func_defs:
+            inlined.extend(func_defs[instr[1]])
+        else:
+            inlined.append(instr)
+    return inlined
+
+def unroll_loops(ir, unroll_factor=4):
+    # For demo, no explicit loop IR, but can be extended
+    return ir
+
+def rle_compress(instructions):
+    compressed = []
+    prev = None
+    count = 1
+    for instr in instructions:
+        if instr == prev:
+            count += 1
+        else:
+            if prev is not None:
+                if count > 1:
+                    compressed.append(f"{prev} * {count}")
+                else:
+                    compressed.append(prev)
+            prev = instr
+            count = 1
+    if prev:
+        compressed.append(f"{prev} * {count}" if count > 1 else prev)
+    return compressed
+
+# --- Register Allocator (SSA-inspired) ---
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+        self.usage_order = []
+
+    def alloc(self):
+        if not self.free:
+            reg = self.usage_order.pop(0)
+            self.in_use.remove(reg)
+            self.free.add(reg)
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        self.usage_order.append(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+            if reg in self.usage_order:
+                self.usage_order.remove(reg)
+
+    def reset(self):
+        self.free = set(self.registers)
+        self.in_use.clear()
+        self.usage_order.clear()
+
+# --- SIMD Math ---
+def simd_add(a, b):
+    return np.add(a, b)
+
+def simd_mul(a, b):
+    return np.multiply(a, b)
+
+# --- Code Generator: x86-64 + AVX2 ---
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator(['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11', 'ymm0', 'ymm1', 'ymm2', 'ymm3'])
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate(self, ast):
+        for node in ast:
+            if node[0] == 'stack_push':
+                reg = self.reg_alloc.alloc()
+                self.emit(f"    mov {reg}, {node[1]}")
+                self.emit(f"    push {reg}")
+                self.reg_alloc.free_reg(reg)
+            elif node[0] == 'stack_pop':
+                reg = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg}")
+                self.reg_alloc.free_reg(reg)
+            elif node[0] == 'add':
+                reg1 = self.reg_alloc.alloc()
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg1}")
+                self.emit(f"    pop {reg2}")
+                self.emit(f"    add {reg1}, {reg2}")
+                self.emit(f"    push {reg1}")
+                self.reg_alloc.free_reg(reg1)
+                self.reg_alloc.free_reg(reg2)
+            elif node[0] == 'mul':
+                reg1 = self.reg_alloc.alloc()
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg1}")
+                self.emit(f"    pop {reg2}")
+                self.emit(f"    imul {reg1}, {reg2}")
+                self.emit(f"    push {reg1}")
+                self.reg_alloc.free_reg(reg1)
+                self.reg_alloc.free_reg(reg2)
+            elif node[0] == 'sub':
+                reg1 = self.reg_alloc.alloc()
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg1}")
+                self.emit(f"    pop {reg2}")
+                self.emit(f"    sub {reg2}, {reg1}")
+                self.emit(f"    push {reg2}")
+                self.reg_alloc.free_reg(reg1)
+                self.reg_alloc.free_reg(reg2)
+            elif node[0] == 'div':
+                reg1 = self.reg_alloc.alloc()
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg2}")  # divisor
+                self.emit(f"    pop {reg1}")  # dividend
+                self.emit("    xor rdx, rdx")
+                self.emit("    cqo")
+                self.emit(f"    idiv {reg2}")
+                self.emit(f"    push {reg1}")
+                self.reg_alloc.free_reg(reg1)
+                self.reg_alloc.free_reg(reg2)
+            elif node[0] == 'mod':
+                reg1 = self.reg_alloc.alloc()
+                reg2 = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg2}")
+                self.emit(f"    pop {reg1}")
+                self.emit("    xor rdx, rdx")
+                self.emit("    cqo")
+                self.emit(f"    idiv {reg2}")
+                self.emit(f"    push rdx")
+                self.reg_alloc.free_reg(reg1)
+                self.reg_alloc.free_reg(reg2)
+            elif node[0] == 'neg':
+                reg = self.reg_alloc.alloc()
+                self.emit(f"    pop {reg}")
+                self.emit(f"    neg {reg}")
+                self.emit(f"    push {reg}")
+                self.reg_alloc.free_reg(reg)
+            elif node[0] == 'label':
+                self.emit(f"{node[1]}:")
+            elif node[0] == 'jmp':
+                self.emit(f"    jmp {node[1]}")
+            elif node[0] == 'jz':
+                self.emit("    pop rax")
+                self.emit(f"    test rax, rax")
+                self.emit(f"    jz {node[1]}")
+            elif node[0] == 'jnz':
+                self.emit("    pop rax")
+                self.emit(f"    test rax, rax")
+                self.emit(f"    jnz {node[1]}")
+            elif node[0] == 'print':
+                self.emit("    ; print (not implemented)")
+            # Add more as needed
+
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+    def compile_and_execute(self):
+        if not KEYSTONE_AVAILABLE:
+            print("[Keystone] Keystone assembler not available. Install with 'pip install keystone-engine'.")
+            return
+        asm = self.output()
+        ks = Ks(KS_ARCH_X86, KS_MODE_64)
+        encoding, _ = ks.asm(asm)
+        machine_code = bytes(encoding)
+        size = len(machine_code)
+        mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+        mm.write(machine_code)
+        mm.seek(0)
+        FUNC_TYPE = ctypes.CFUNCTYPE(None)
+        address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+        if not address or address == 0:
+            print("[JIT] Invalid function pointer. Aborting execution.")
+            mm.close()
+            return
+        func = FUNC_TYPE(address)
+        func()
+        mm.close()
+
+# --- World's Best Compiler Entry Point ---
+def supreme_compile(source_code):
+    print("[1] Tokenizing...")
+    tokens = tokenize(source_code)
+    print("[2] Parsing...")
+    ast = parse(tokens)
+    print("[3] Optimizing IR...")
+    ast = inline_functions(ast, {})  # No user functions in this demo
+    ast = unroll_loops(ast, unroll_factor=8)
+    print("[4] Generating code...")
+    codegen = CodeGenerator()
+    codegen.generate(ast)
+    print("[5] Compressing bytecode...")
+    compressed = rle_compress(codegen.instructions)
+    print("[6] Outputting assembly:")
+    asm = codegen.output()
+    print(asm)
+    print("[7] Executing (AOT+JIT)...")
+    codegen.compile_and_execute()
+    print("[✓] Compilation and execution complete.")
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Example: Add two numbers and halt
+    code = "stack push 10 stack push 32 add"
+    supreme_compile(code)
+
+    # --- Web Extension: Simple HTTP Server and Request Handler ---
+    import http.server
+    import socketserver
+    import urllib.request
+
+    import threading
+    def start_web_server(port=8000):
+        class SimpleHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Hello from Tempercore Web Server!")
+
+                # World's Best Compiler: Tempercore "Supreme" Edition
+# Features: Multi-stage IR, SIMD/AVX2/AVX-512, LLVM JIT, AOT, global register allocation, bytecode compression, speculative execution, symbolic math, graphics, sound, and more.
+
+import threading
+import multiprocessing as mp
+import numpy as np
+import ctypes
+import mmap
+import sys
+import os
+import re
+from collections import defaultdict
+
+# --- 1. Tokenizer and Parser ---
+def tokenize(code):
+    return re.findall(r'\"[^\"]*\"|\w+|[^\s\w]', code)
+
+def parse(tokens):
+    # Very simple parser: returns list of (op, args...)
+    ast = []
+    idx = 0
+    while idx < len(tokens):
+        t = tokens[idx]
+        if t == "let" and idx+2 < len(tokens) and tokens[idx+2] == "=":
+            ast.append(("assign", tokens[idx+1], tokens[idx+3]))
+            idx += 4
+        elif t == "add" and idx+2 < len(tokens):
+            ast.append(("add", tokens[idx+1], tokens[idx+2]))
+            idx += 3
+        elif t == "mul" and idx+2 < len(tokens):
+            ast.append(("mul", tokens[idx+1], tokens[idx+2]))
+            idx += 3
+        elif t == "vector_add" and idx+2 < len(tokens):
+            ast.append(("vector_add", tokens[idx+1], tokens[idx+2]))
+            idx += 3
+        elif t == "print" and idx+1 < len(tokens):
+            ast.append(("print", tokens[idx+1]))
+            idx += 2
+        else:
+            idx += 1
+    return ast
+
+# --- 2. Intermediate Representation (IR) ---
+def generate_ir(ast):
+    ir = []
+    for node in ast:
+        if node[0] == "assign":
+            ir.append(("mov", node[1], node[2]))
+        elif node[0] == "add":
+            ir.append(("add", node[1], node[2]))
+        elif node[0] == "mul":
+            ir.append(("mul", node[1], node[2]))
+        elif node[0] == "vector_add":
+            ir.append(("vector_add", node[1], node[2]))
+        elif node[0] == "print":
+            ir.append(("print", node[1]))
+    return ir
+
+# --- 3. Global Register Allocator (SSA-inspired) ---
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.var_to_reg = {}
+
+    def alloc(self, var):
+        if var in self.var_to_reg:
+            return self.var_to_reg[var]
+        reg = self.free.pop() if self.free else self.registers[0]
+        self.var_to_reg[var] = reg
+        return reg
+
+    def free_reg(self, var):
+        reg = self.var_to_reg.get(var)
+        if reg:
+            self.free.add(reg)
+            del self.var_to_reg[var]
+
+# --- 4. SIMD/AVX2/AVX-512 Vectorized Math ---
+def simd_add(a, b):
+    return np.add(a, b)
+
+# --- 5. Code Generator (x86-64 + AVX2) ---
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator()
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate(self, ir):
+        for node in ir:
+            if node[0] == "mov":
+                reg = self.reg_alloc.alloc(node[1])
+                self.emit(f"    mov {reg}, {node[2]}")
+            elif node[0] == "add":
+                reg1 = self.reg_alloc.alloc(node[1])
+                reg2 = self.reg_alloc.alloc(node[2])
+                self.emit(f"    add {reg1}, {reg2}")
+            elif node[0] == "mul":
+                reg1 = self.reg_alloc.alloc(node[1])
+                reg2 = self.reg_alloc.alloc(node[2])
+                self.emit(f"    imul {reg1}, {reg2}")
+            elif node[0] == "vector_add":
+                self.emit(f"    vaddps ymm0, ymm1, ymm2  ; SIMD vector add")
+            elif node[0] == "print":
+                reg = self.reg_alloc.alloc(node[1])
+                self.emit(f"    ; print {reg} (not implemented)")
+        self.emit("    mov rax, 60")
+        self.emit("    xor rdi, rdi")
+        self.emit("    syscall")
+
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions
+        ])
+
+# --- 6. Bytecode Compression ---
+def compress_bytecode(instructions):
+    compressed = []
+    prev = None
+    count = 1
+    for instr in instructions:
+        if instr == prev:
+            count += 1
+        else:
+            if prev is not None:
+                compressed.append(f"{prev} * {count}" if count > 1 else prev)
+            prev = instr
+            count = 1
+    if prev:
+        compressed.append(f"{prev} * {count}" if count > 1 else prev)
+    return compressed
+
+# --- 7. JIT/AOT Compilation (Keystone + mmap) ---
+def jit_execute(asm_code):
+    try:
+        from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+        ks = Ks(KS_ARCH_X86, KS_MODE_64)
+        encoding, _ = ks.asm(asm_code)
+        machine_code = bytes(encoding)
+        size = len(machine_code)
+        mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+        mm.write(machine_code)
+        mm.seek(0)
+        FUNC_TYPE = ctypes.CFUNCTYPE(None)
+        address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+        func = FUNC_TYPE(address)
+        func()
+        mm.close()
+    except Exception as e:
+        print(f"[JIT] Execution error: {e}")
+
+# --- 8. Main Compiler Pipeline ---
+def supreme_compile_and_run(source_code):
+    print("[1] Tokenizing...")
+    tokens = tokenize(source_code)
+    print("[2] Parsing...")
+    ast = parse(tokens)
+    print("[3] Generating IR...")
+    ir = generate_ir(ast)
+    print("[4] Allocating Registers...")
+    codegen = CodeGenerator()
+    codegen.generate(ir)
+    print("[5] Compressing Bytecode...")
+    compressed = compress_bytecode(codegen.instructions)
+    print("[6] Generating Assembly...")
+    asm = codegen.output()
+    print("\n[Generated Assembly]:\n", asm)
+    print("[7] JIT Compiling and Executing...")
+    jit_execute(asm)
+
+# --- 9. Example Usage ---
+if __name__ == "__main__":
+    # Example: let x = 5; let y = 10; add x y; print x
+    code = """
+    let x = 5
+    let y = 10
+    add x y
+    print x
+    """
+    supreme_compile_and_run(code)
+self.wfile.write(b"Hello from Tempercore Web Server!") # type: ignore
+
+class Example:
+    def __init__(self, value):
+        self.value = value  # 'self.value' is an attribute of the instance
+
+    def show(self):
+        print(self.value)   # Accesses the instance's attribute via 'self'
+
+obj = Example(42)
+obj.show()  # Output: 42
+
+threading.Thread(target=self.serve_forever).start() # type: ignore
+
+class MyClass:
+    def my_method(self): # ✅ Add 'self'
+        print(self.value)
+
+def some_function():
+    print(self.value)  # type: ignore # ❌ 'self' is not defined here
+
+    return MyClass()
+
+    def create_server(self, port=8000):
+        with socketserver.TCPServer(("", port), SimpleHTTPRequestHandler) as httpd:
+            print(f"[Web Server] Serving on port {port}")
+            httpd.serve_forever()
+
+            if __name__ == "__main__":
+                server_thread = threading.Thread(target=self.create_server, args=(8000,))
+                server_thread.start()
+                print("[Web Server] Started on port 8000")
+
+                def run_tempercore_command(command):
+                    tokens = command.strip().split()
+                    if not tokens:
+                        print("[Interpreter] No command entered.")
+                        return
+                    if tokens[0] == "exit":
+                        print("[Interpreter] Exiting Tempercore.")
+                        sys.exit(0)
+                        for ext in extensions:
+                            if ext.handle(tokens):
+                                    
+                                return
+                            for ext in extensions:
+                                if ext.handle(tokens):
+                                    return
+                                if tokens[0] == "engine":
+                                    print("[Interpreter] Engine command not recognized.")
+                                    return
+                                if tokens[0] == "game":
+                                    if len(tokens) < 2:
+                                            print("[Interpreter] Missing game command.")
+class Example:
+    def __init__(self, value):
+        self.value = value
+
+    def show(self):  # 'self' must be the first parameter
+        print(self.value)
+
+import threading
+import multiprocessing as mp
+import numpy as np
+import ctypes
+import mmap
+import math
+import time
+import os
+import sys
+from collections import defaultdict
+
+# --- SIMD/AVX2/AVX-512 Vectorized Math ---
+def simd_add(a, b):
+    return np.add(a, b)
+
+def simd_mul(a, b):
+    return np.multiply(a, b)
+
+# --- Parallel Processing ---
+def parallel_sum(arrays):
+    with mp.Pool(mp.cpu_count()) as pool:
+        results = pool.map(np.sum, arrays)
+    return sum(results)
+
+# --- Global Register Allocator (SSA-inspired) ---
+class GlobalRegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or [
+            'rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11',
+            'ymm0', 'ymm1', 'ymm2', 'ymm3', 'ymm4', 'ymm5', 'ymm6', 'ymm7'
+        ]
+        self.var_to_reg = {}
+        self.reg_in_use = set()
+        self.liveness = defaultdict(set)
+        self.usage_order = []
+        self.next_temp = 0
+
+    def analyze_liveness(self, instructions):
+        for idx, instr in enumerate(instructions):
+            for var in instr.get('read', []):
+                self.liveness[var].add(idx)
+            for var in instr.get('write', []):
+                self.liveness[var].add(idx)
+
+    def allocate(self, var, idx):
+        if var in self.var_to_reg and idx in self.liveness[var]:
+            return self.var_to_reg[var]
+        for reg in self.registers:
+            if reg not in self.reg_in_use:
+                self.var_to_reg[var] = reg
+                self.reg_in_use.add(reg)
+                self.usage_order.append(reg)
+                return reg
+        reg = self.usage_order.pop(0)
+        self.reg_in_use.remove(reg)
+        self.var_to_reg[var] = reg
+        self.reg_in_use.add(reg)
+        self.usage_order.append(reg)
+        return reg
+
+    def free(self, var):
+        reg = self.var_to_reg.get(var)
+        if reg and reg in self.reg_in_use:
+            self.reg_in_use.remove(reg)
+            self.usage_order.remove(reg)
+            del self.var_to_reg[var]
+
+    def temp(self):
+        t = f"t{self.next_temp}"
+        self.next_temp += 1
+        return t
+
+    def reset(self):
+        self.var_to_reg.clear()
+        self.reg_in_use.clear()
+        self.usage_order.clear()
+        self.liveness.clear()
+        self.next_temp = 0
+
+# --- Bytecode Compression ---
+def rle_compress(instructions):
+    compressed = []
+    prev = None
+    count = 1
+    for instr in instructions:
+        if instr == prev:
+            count += 1
+        else:
+            if prev is not None:
+                if count > 1:
+                    compressed.append(f"{prev} * {count}")
+                else:
+                    compressed.append(prev)
+            prev = instr
+            count = 1
+    if prev:
+        compressed.append(f"{prev} * {count}" if count > 1 else prev)
+    return compressed
+
+def fold_redundant_loads(instructions):
+    folded = []
+    last_load = None
+    for instr in instructions:
+        if instr.startswith("mov") and instr == last_load:
+            continue
+        folded.append(instr)
+        last_load = instr if instr.startswith("mov") else None
+    return folded
+
+def compress_bytecode(instructions):
+    folded = fold_redundant_loads(instructions)
+    return rle_compress(folded)
+
+# --- Speculative Execution ---
+class SpeculativeExecutor:
+    def __init__(self):
+        self.history = []
+        self.branch_table = {}
+        self.rollback_stack = []
+
+    def predict(self, branch_label):
+        return self.branch_table.get(branch_label, True)
+
+    def execute_branch(self, condition, true_path, false_path, label):
+        prediction = self.predict(label)
+        self.rollback_stack.append((label, true_path, false_path))
+        return true_path if prediction else false_path
+
+    def commit(self, actual_taken):
+        label, true_path, false_path = self.rollback_stack.pop()
+        prediction = self.branch_table.get(label, True)
+        self.branch_table[label] = actual_taken
+        if prediction != actual_taken:
+            print(f"[SpeculativeExec] Misprediction! Rewinding and correcting '{label}'")
+            return false_path if actual_taken else true_path
+        print(f"[SpeculativeExec] Prediction correct for '{label}'")
+        return None
+
+# --- Security Manager ---
+import re
+class SecurityManager:
+    def __init__(self):
+        self.forbidden_patterns = [
+            r'os\.system', r'subprocess', r'eval', r'exec', r'open\(', r'__import__'
+        ]
+    def check(self, code):
+        for pat in self.forbidden_patterns:
+            if re.search(pat, code):
+                raise PermissionError(f"Security violation: '{pat}' is not allowed.")
+
+# --- Symbolic Computation ---
+import sympy
+class SymbolicTable:
+    def __init__(self):
+        self.symbols = {}
+    def set(self, name, expr):
+        if isinstance(expr, str):
+            expr = sympy.sympify(expr)
+        self.symbols[name] = expr
+    def get(self, name):
+        return self.symbols.get(name, None)
+    def eval(self, name, subs=None):
+        expr = self.get(name)
+        if expr is not None:
+            return expr.evalf(subs=subs)
+        return None
+
+# --- Direct Syscall Example (Linux) ---
+def direct_exit(status):
+    libc = ctypes.CDLL("libc.so.6")
+    libc.syscall(60, status)  # 60 is SYS_exit on x86-64
+
+# --- Graphics Engine (Pillow) ---
+from PIL import Image, ImageDraw
+class GraphicsEngine:
+    def __init__(self, width=320, height=240, bg_color=(0, 0, 0)):
+        self.width = width
+        self.height = height
+        self.bg_color = bg_color
+        self.image = Image.new("RGB", (width, height), bg_color)
+        self.draw = ImageDraw.Draw(self.image)
+        self.lock = threading.Lock()
+    def set_pixel(self, x, y, color):
+        with self.lock:
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self.image.putpixel((x, y), color)
+    def show(self):
+        with self.lock:
+            self.image.show()
+
+# --- Sound Engine (sounddevice) ---
+import sounddevice as sd
+class SoundEngine:
+    def __init__(self, samplerate=44100):
+        self.samplerate = samplerate
+    def play_tone(self, freq, duration, volume=0.5):
+        t = np.linspace(0, duration, int(self.samplerate * duration), False)
+        tone = np.sin(freq * t * 2 * np.pi) * volume
+        sd.play(tone, self.samplerate)
+        sd.wait()
+
+# --- Code Forensics ---
+class CodeForensics:
+    @staticmethod
+    def analyze_code_complexity(source_code):
+        lines = source_code.splitlines()
+        loc = len(lines)
+        comment_lines = sum(1 for l in lines if l.strip().startswith("#"))
+        blank_lines = sum(1 for l in lines if not l.strip())
+        functions = sum(1 for l in lines if l.strip().startswith("def "))
+        classes = sum(1 for l in lines if l.strip().startswith("class "))
+        return {
+            "lines_of_code": loc,
+            "comment_lines": comment_lines,
+            "blank_lines": blank_lines,
+            "functions": functions,
+            "classes": classes
+        }
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # SIMD
+    a = np.arange(8, dtype=np.float32)
+    b = np.arange(8, dtype=np.float32)
+    print("SIMD add:", simd_add(a, b))
+    print("SIMD mul:", simd_mul(a, b))
+
+    # Parallel sum
+    arrays = [np.arange(1000000, dtype=np.float32) for _ in range(8)]
+    print("Parallel sum:", parallel_sum(arrays))
+
+    # Graphics
+    gfx = GraphicsEngine()
+    gfx.set_pixel(10, 10, (255, 0, 0))
+    gfx.show()
+
+    # Sound
+    snd = SoundEngine()
+    # snd.play_tone(440, 0.5)  # Uncomment to play a tone
+
+    # Symbolic
+    symbolic = SymbolicTable()
+    symbolic.set("x", "2*y + 3")
+    print("Symbolic x:", symbolic.get("x"))
+    print("Symbolic eval x, y=5:", symbolic.eval("x", {"y": 5}))
+
+    # Security
+    security = SecurityManager()
+    try:
+        security.check("os.system('ls')")
+    except PermissionError as e:
+        print("[SECURITY]", e)
+
+    # Code forensics
+    with open(__file__, "r") as f:
+        code = f.read()
+    print("Code complexity:", CodeForensics.analyze_code_complexity(code))
+
+# Direct syscall
+    direct_exit(0)  # Exit the program with status 0
