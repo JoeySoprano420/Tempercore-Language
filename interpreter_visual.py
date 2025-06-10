@@ -10327,4 +10327,3 @@ pipeline = []
             raise RuntimeError(f"TEMPERCORE::E002: '{node.name}' already defined")
     declared_symbols.add(node.name)
     runtime_env[node.name] = eval_expression(node.value)  # type: ignore # Evaluate the value expression
-
