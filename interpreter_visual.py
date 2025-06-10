@@ -8384,3 +8384,318 @@ def game_engine():
 # Example usage:
 # game_engine()
 
+import os
+import sys
+from keystone import Ks, KS_ARCH_X86, KS_MODE_64
+
+# --- IR to NASM Assembly ---
+def ir_to_asm(ir):
+    asm = [
+        "section .text",
+        "global _start",
+        "_start:"
+    ]
+    for instr in ir:
+        op = instr[0]
+        if op == "stack_push":
+            asm.append(f"    mov rax, {instr[1]}")
+            asm.append("    push rax")
+        elif op == "stack_pop":
+            asm.append("    pop rax")
+        elif op == "add":
+            asm += [
+                "    pop rax",
+                "    pop rbx",
+                "    add rax, rbx",
+                "    push rax"
+            ]
+        elif op == "sub":
+            asm += [
+                "    pop rax",
+                "    pop rbx",
+                "    sub rbx, rax",
+                "    push rbx"
+            ]
+        elif op == "mul":
+            asm += [
+                "    pop rax",
+                "    pop rbx",
+                "    imul rax, rbx",
+                "    push rax"
+            ]
+        elif op == "div":
+            asm += [
+                "    pop rbx",
+                "    pop rax",
+                "    cqo",
+                "    idiv rbx",
+                "    push rax"
+            ]
+        elif op == "exit":
+            asm += [
+                "    mov rax, 60",
+                "    xor rdi, rdi",
+                "    syscall"
+            ]
+        else:
+            raise ValueError(f"Unknown IR op: {op}")
+    # Ensure program exits
+    if not any(i[0] == "exit" for i in ir):
+        asm += [
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ]
+    return "\n".join(asm)
+
+# --- Assemble to Machine Code ---
+def assemble(asm_code):
+    ks = Ks(KS_ARCH_X86, KS_MODE_64)
+    encoding, _ = ks.asm(asm_code)
+    return bytes(encoding)
+
+# --- Write ELF Executable (Linux x86-64) ---
+def write_elf_executable(machine_code, output_path):
+    # Minimal ELF64 header for Linux x86-64
+    import struct
+
+    # ELF header
+    elf_header = b'\x7fELF'          # Magic
+    elf_header += b'\x02'            # 64-bit
+    elf_header += b'\x01'            # little endian
+    elf_header += b'\x01'            # ELF version
+    elf_header += b'\x00' * 9        # padding
+    elf_header += struct.pack('<H', 2)      # type: EXEC
+    elf_header += struct.pack('<H', 0x3e)   # machine: x86-64
+    elf_header += struct.pack('<I', 1)      # version
+    elf_header += struct.pack('<Q', 0x400078)  # entry point (after header)
+    elf_header += struct.pack('<Q', 64)     # program header offset
+    elf_header += struct.pack('<Q', 0)      # section header offset
+    elf_header += struct.pack('<I', 0)      # flags
+    elf_header += struct.pack('<H', 64)     # ELF header size
+    elf_header += struct.pack('<H', 56)     # program header size
+    elf_header += struct.pack('<H', 1)      # number of program headers
+    elf_header += struct.pack('<H', 0)      # section header size
+    elf_header += struct.pack('<H', 0)      # number of section headers
+    elf_header += struct.pack('<H', 0)      # section header string table index
+
+    # Program header
+    ph = struct.pack('<I', 1)               # type: ignore # type: LOAD
+    ph += struct.pack('<I', 5)              # flags: RX
+    ph += struct.pack('<Q', 0)              # offset
+    ph += struct.pack('<Q', 0x400000)       # vaddr
+    ph += struct.pack('<Q', 0x400000)       # paddr
+    ph += struct.pack('<Q', len(elf_header) + 56 + len(machine_code))  # filesz
+    ph += struct.pack('<Q', len(elf_header) + 56 + len(machine_code))  # memsz
+    ph += struct.pack('<Q', 0x1000)         # align
+
+    # Pad code to 0x78 offset (entry point)
+    code_offset = 0x78
+    code_pad = b'\x90' * (code_offset - (len(elf_header) + len(ph)))
+    elf = elf_header + ph + code_pad + machine_code
+
+    with open(output_path, "wb") as f:
+        f.write(elf)
+    os.chmod(output_path, 0o755)
+
+# --- Full AOT Compiler Pipeline ---
+def aot_compile(ir, output_path="aot_output"):
+    asm = ir_to_asm(ir)
+    print("[AOT] Assembly:\n", asm)
+    machine_code = assemble(asm)
+    write_elf_executable(machine_code, output_path)
+    print(f"[AOT] Native executable written to: {output_path}")
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Example IR: Push 2, Push 3, Add, Exit
+    ir = [
+        ("stack_push", 2),
+        ("stack_push", 3),
+        ("add",),
+        ("exit",)
+    ]
+    aot_compile(ir, "tempercore_aot_example")
+    print("Run './tempercore_aot_example' to execute the compiled binary.")
+
+import re
+import sys
+
+# --- Tokenizer ---
+def tokenize(code):
+    token_spec = [
+        ('NUMBER',   r'\d+(\.\d+)?'),
+        ('ASSIGN',   r'='),
+        ('END',      r';'),
+        ('ID',       r'[A-Za-z_][A-Za-z0-9_]*'),
+        ('OP',       r'[\+\-\*/]'),
+        ('LPAREN',   r'\('),
+        ('RPAREN',   r'\)'),
+        ('SKIP',     r'[ \t]+'),
+        ('NEWLINE',  r'\n'),
+        ('MISMATCH', r'.'),
+    ]
+    tok_regex = '|'.join(f'(?P<{name}>{regex})' for name, regex in token_spec)
+    for mo in re.finditer(tok_regex, code):
+        kind = mo.lastgroup
+        value = mo.group()
+        if kind == 'NUMBER':
+            value = float(value) if '.' in value else int(value)
+        elif kind == 'ID':
+            value = value
+        elif kind == 'SKIP' or kind == 'NEWLINE':
+            continue
+        elif kind == 'MISMATCH':
+            raise SyntaxError(f'Unexpected character: {value}')
+        yield (kind, value)
+
+# --- Parser (Recursive Descent) ---
+class ASTNode: pass
+
+class Number(ASTNode):
+    def __init__(self, value): self.value = value
+
+class Var(ASTNode):
+    def __init__(self, name): self.name = name
+
+class BinOp(ASTNode):
+    def __init__(self, left, op, right): self.left = left; self.op = op; self.right = right
+
+class Assign(ASTNode):
+    def __init__(self, name, expr): self.name = name; self.expr = expr
+
+class Print(ASTNode):
+    def __init__(self, expr): self.expr = expr
+
+class Seq(ASTNode):
+    def __init__(self, stmts): self.stmts = stmts
+
+def parse(tokens):
+    tokens = list(tokens)
+    pos = 0
+
+    def peek(): return tokens[pos] if pos < len(tokens) else (None, None)
+    def advance(): nonlocal pos; pos += 1
+
+    def parse_expr():
+        left = parse_term()
+        while True:
+            kind, val = peek()
+            if kind == 'OP' and val in ('+', '-'):
+                advance()
+                right = parse_term()
+                left = BinOp(left, val, right)
+            else:
+                break
+        return left
+
+    def parse_term():
+        left = parse_factor()
+        while True:
+            kind, val = peek()
+            if kind == 'OP' and val in ('*', '/'):
+                advance()
+                right = parse_factor()
+                left = BinOp(left, val, right)
+            else:
+                break
+        return left
+
+    def parse_factor():
+        kind, val = peek()
+        if kind == 'NUMBER':
+            advance()
+            return Number(val)
+        elif kind == 'ID':
+            advance()
+            return Var(val)
+        elif kind == 'LPAREN':
+            advance()
+            expr = parse_expr()
+            if peek()[0] != 'RPAREN':
+                raise SyntaxError("Expected ')'")
+            advance()
+            return expr
+        else:
+            raise SyntaxError(f"Unexpected token: {kind}")
+
+    def parse_stmt():
+        kind, val = peek()
+        if kind == 'ID':
+            # Assignment or print
+            name = val
+            advance()
+            if peek()[0] == 'ASSIGN':
+                advance()
+                expr = parse_expr()
+                if peek()[0] == 'END':
+                    advance()
+                return Assign(name, expr)
+            else:
+                raise SyntaxError("Expected '=' after identifier")
+        elif kind == 'ID' and val == 'print':
+            advance()
+            expr = parse_expr()
+            if peek()[0] == 'END':
+                advance()
+            return Print(expr)
+        else:
+            expr = parse_expr()
+            if peek()[0] == 'END':
+                advance()
+            return expr
+
+    stmts = []
+    while pos < len(tokens):
+        stmts.append(parse_stmt())
+    return Seq(stmts)
+
+# --- Evaluator ---
+class Context:
+    def __init__(self):
+        self.vars = {}
+
+def eval_ast(node, ctx):
+    if isinstance(node, Number):
+        return node.value
+    elif isinstance(node, Var):
+        if node.name in ctx.vars:
+            return ctx.vars[node.name]
+        else:
+            raise NameError(f"Undefined variable: {node.name}")
+    elif isinstance(node, BinOp):
+        l = eval_ast(node.left, ctx)
+        r = eval_ast(node.right, ctx)
+        if node.op == '+': return l + r
+        if node.op == '-': return l - r
+        if node.op == '*': return l * r
+        if node.op == '/': return l / r
+    elif isinstance(node, Assign):
+        val = eval_ast(node.expr, ctx)
+        ctx.vars[node.name] = val
+        return val
+    elif isinstance(node, Print):
+        val = eval_ast(node.expr, ctx)
+        print(val)
+        return val
+    elif isinstance(node, Seq):
+        res = None
+        for stmt in node.stmts:
+            res = eval_ast(stmt, ctx)
+        return res
+    else:
+        raise TypeError(f"Unknown AST node: {type(node)}")
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    code = """
+    x = 5;
+    y = 10;
+    z = x * y + 2;
+    print z;
+    """
+    tokens = tokenize(code)
+    ast = parse(tokens)
+    ctx = Context()
+    eval_ast(ast, ctx)
+    
