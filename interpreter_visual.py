@@ -5913,3 +5913,209 @@ def run_tempercore_command(cmd):
             # ...rest of your command handling...
             print(f"[Error] Unknown command: {cmd}")
             return
+
+import threading
+import mmap
+import ctypes
+
+# --- Stack with Safe Pop ---
+class Stack:
+    def __init__(self):
+        self.stack = []
+        self.lock = threading.Lock()
+
+    def push(self, val):
+        with self.lock:
+            self.stack.append(val)
+            self.display()
+
+    def pop(self):
+        with self.lock:
+            if not self.stack:
+                print("[Stack] Underflow error: stack is empty.")
+                return None
+            val = self.stack.pop()
+            self.display()
+            return val
+
+    def peek(self):
+        with self.lock:
+            return self.stack[-1] if self.stack else None
+
+    def clear(self):
+        with self.lock:
+            self.stack.clear()
+            self.display()
+
+    def size(self):
+        with self.lock:
+            return len(self.stack)
+
+    def display(self):
+        print("\n[STACK]")
+        for i, item in enumerate(reversed(self.stack)):
+            print(f"{len(self.stack) - i}: {item}")
+        print("-" * 20)
+
+# --- Heap with Simple Memory Pool ---
+class MemoryPool:
+    def __init__(self, block_size=256, pool_size=1024*256):
+        self.block_size = block_size
+        self.pool_size = pool_size
+        self.pool = bytearray(pool_size)
+        self.free_blocks = list(range(0, pool_size, block_size))
+        self.lock = threading.Lock()
+        self.alloc_map = {}
+
+    def allocate(self, name, size):
+        with self.lock:
+            blocks_needed = (size + self.block_size - 1) // self.block_size
+            if len(self.free_blocks) < blocks_needed:
+                print(f"[Heap] Not enough memory to allocate '{name}'.")
+                return None
+            start = self.free_blocks.pop(0)
+            self.alloc_map[name] = (start, blocks_needed * self.block_size)
+            return memoryview(self.pool)[start:start + blocks_needed * self.block_size]
+
+    def free(self, name):
+        with self.lock:
+            if name in self.alloc_map:
+                start, size = self.alloc_map.pop(name)
+                for i in range(start, start + size, self.block_size):
+                    self.free_blocks.append(i)
+                self.free_blocks.sort()
+
+class Heap:
+    def __init__(self):
+        self.heap = {}
+        self.pool = MemoryPool()
+        self.lock = threading.Lock()
+
+    def allocate(self, name, value):
+        with self.lock:
+            size = len(str(value).encode('utf-8'))
+            buf = self.pool.allocate(name, size)
+            if buf is not None:
+                buf[:size] = str(value).encode('utf-8')
+                self.heap[name] = buf
+                self.display()
+            else:
+                print(f"[Heap] Allocation failed for '{name}'.")
+
+    def retrieve(self, name):
+        with self.lock:
+            buf = self.heap.get(name, None)
+            if buf is not None:
+                return bytes(buf).decode('utf-8', errors='replace')
+            return None
+
+    def delete(self, name):
+        with self.lock:
+            if name in self.heap:
+                self.pool.free(name)
+                del self.heap[name]
+                self.display()
+
+    def clear(self):
+        with self.lock:
+            for name in list(self.heap.keys()):
+                self.pool.free(name)
+            self.heap.clear()
+            self.display()
+
+    def keys(self):
+        with self.lock:
+            return list(self.heap.keys())
+
+    def dump(self):
+        with self.lock:
+            return {k: bytes(v).decode('utf-8', errors='replace') for k, v in self.heap.items()}
+
+    def display(self):
+        print("\n[HEAP]")
+        for k, v in self.heap.items():
+            print(f"{k} => {bytes(v).decode('utf-8', errors='replace')}")
+        print("-" * 20)
+
+# --- Register Allocator with Minimal Redundancy ---
+class RegisterAllocator:
+    def __init__(self, registers=None):
+        self.registers = registers or ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+        self.free = set(self.registers)
+        self.in_use = set()
+        self.usage_order = []
+
+    def alloc(self):
+        if not self.free:
+            # Simple spill: free the least recently used
+            reg = self.usage_order.pop(0)
+            self.in_use.remove(reg)
+            self.free.add(reg)
+        reg = self.free.pop()
+        self.in_use.add(reg)
+        self.usage_order.append(reg)
+        return reg
+
+    def free_reg(self, reg):
+        if reg in self.in_use:
+            self.in_use.remove(reg)
+            self.free.add(reg)
+            if reg in self.usage_order:
+                self.usage_order.remove(reg)
+
+    def reset(self):
+        self.free = set(self.registers)
+        self.in_use.clear()
+        self.usage_order.clear()
+
+# --- Optimized Code Generator Example ---
+class CodeGenerator:
+    def __init__(self):
+        self.instructions = []
+        self.reg_alloc = RegisterAllocator()
+
+    def emit(self, instr):
+        self.instructions.append(instr)
+
+    def generate_add(self):
+        reg1 = self.reg_alloc.alloc()
+        reg2 = self.reg_alloc.alloc()
+        self.emit(f"    pop {reg1}")
+        self.emit(f"    pop {reg2}")
+        self.emit(f"    add {reg1}, {reg2}")
+        self.emit(f"    push {reg1}")
+        self.reg_alloc.free_reg(reg1)
+        self.reg_alloc.free_reg(reg2)
+
+    def output(self):
+        return "\n".join([
+            "section .text",
+            "global _start",
+            "_start:",
+            *self.instructions,
+            "    mov rax, 60",
+            "    xor rdi, rdi",
+            "    syscall"
+        ])
+
+# --- JIT Safety Check ---
+def safe_jit_execute(machine_code):
+    size = len(machine_code)
+    mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+    mm.write(machine_code)
+    mm.seek(0)
+    FUNC_TYPE = ctypes.CFUNCTYPE(None)
+    address = ctypes.addressof(ctypes.c_char.from_buffer(mm))
+    if not address or address == 0:
+        print("[JIT] Invalid function pointer. Aborting execution.")
+        mm.close()
+        return
+    try:
+        func = FUNC_TYPE(address)
+        print("[JIT] Executing machine code (safely):")
+        func()
+    except Exception as e:
+        print(f"[JIT] Execution error: {e}")
+    finally:
+        mm.close()
+
