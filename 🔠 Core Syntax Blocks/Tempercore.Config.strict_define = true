@@ -1,0 +1,3 @@
+if Config.strict_define {
+    diagnostics_enforce_define.run()
+}
