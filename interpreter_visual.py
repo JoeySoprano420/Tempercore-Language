@@ -6119,3 +6119,523 @@ def safe_jit_execute(machine_code):
     finally:
         mm.close()
 
+import math
+
+class TempercoreStdLib:
+    @staticmethod
+    def factorial(n):
+        return math.factorial(n)
+
+    @staticmethod
+    def prime(n):
+        if n < 2:
+            return False
+        for i in range(2, int(n ** 0.5) + 1):
+            if n % i == 0:
+                return False
+        return True
+
+    @staticmethod
+    def primes_up_to(n):
+        return [x for x in range(2, n + 1) if TempercoreStdLib.prime(x)]
+
+    @staticmethod
+    def gcd(a, b):
+        while b:
+            a, b = b, a % b
+        return a
+
+    @staticmethod
+    def lcm(a, b):
+        return abs(a * b) // TempercoreStdLib.gcd(a, b)
+
+    @staticmethod
+    def reverse_string(s):
+        return s[::-1]
+
+    @staticmethod
+    def count_words(s):
+        return len(s.split())
+
+    @staticmethod
+    def frequency_map(s):
+        freq = {}
+        for char in s:
+            freq[char] = freq.get(char, 0) + 1
+        return freq
+
+    @staticmethod
+    def to_upper(s):
+        return s.upper()
+
+    @staticmethod
+    def to_lower(s):
+        return s.lower()
+
+    @staticmethod
+    def remove_whitespace(s):
+        return "".join(s.split())
+
+    @staticmethod
+    def extract_numbers(s):
+        return [int(x) for x in s.split() if x.isdigit()]
+
+import sys
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QTextEdit, QPushButton, QLabel, QFileDialog, QSplitter, QListWidget
+)
+from PyQt5.QtCore import Qt
+from interpreter_visual import run_tempercore_command, stack, heap
+
+class TempercoreIDE(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Tempercore IDE")
+        self.setGeometry(100, 100, 1200, 700)
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.editor = QTextEdit()
+        self.editor.setPlaceholderText("Write Tempercore code here...")
+        self.console = QTextEdit()
+        self.console.setReadOnly(True)
+        self.splitter.addWidget(self.editor)
+        self.splitter.addWidget(self.console)
+
+        self.layout.addWidget(self.splitter)
+
+        vis_layout = QHBoxLayout()
+        self.stack_view = QListWidget()
+        self.stack_view.setFixedWidth(200)
+        self.heap_view = QListWidget()
+        self.heap_view.setFixedWidth(300)
+        vis_layout.addWidget(QLabel("Stack:"))
+        vis_layout.addWidget(self.stack_view)
+        vis_layout.addWidget(QLabel("Heap:"))
+        vis_layout.addWidget(self.heap_view)
+        self.layout.addLayout(vis_layout)
+
+        btn_layout = QHBoxLayout()
+        self.run_btn = QPushButton("Run")
+        self.load_btn = QPushButton("Load File")
+        self.save_btn = QPushButton("Save File")
+        btn_layout.addWidget(self.run_btn)
+        btn_layout.addWidget(self.load_btn)
+        btn_layout.addWidget(self.save_btn)
+        self.layout.addLayout(btn_layout)
+
+        self.run_btn.clicked.connect(self.run_code)
+        self.load_btn.clicked.connect(self.load_file)
+        self.save_btn.clicked.connect(self.save_file)
+
+    def run_code(self):
+        code = self.editor.toPlainText()
+        self.console.clear()
+        for line in code.splitlines():
+            output = self.execute_line(line.strip())
+            if output:
+                self.console.append(output)
+        self.update_stack_view()
+        self.update_heap_view()
+
+    def execute_line(self, line):
+        try:
+            from io import StringIO
+            import contextlib
+
+            output_buffer = StringIO()
+            with contextlib.redirect_stdout(output_buffer):
+                run_tempercore_command(line)
+            return output_buffer.getvalue().strip()
+        except Exception as e:
+            return f"Error: {e}"
+
+    def update_stack_view(self):
+        self.stack_view.clear()
+        for item in reversed(stack.stack):
+            self.stack_view.addItem(str(item))
+
+    def update_heap_view(self):
+        self.heap_view.clear()
+        current_heap = heap.dump()
+        for key, value in current_heap.items():
+            self.heap_view.addItem(f"{key} => {value}")
+
+    def load_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Open .tpc File", "", "Tempercore (*.tpc)")
+        if path:
+            with open(path, "r") as f:
+                self.editor.setText(f.read())
+
+    def save_file(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save .tpc File", "", "Tempercore (*.tpc)")
+        if path:
+            with open(path, "w") as f:
+                f.write(self.editor.toPlainText())
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    ide = TempercoreIDE()
+    ide.show()
+    sys.exit(app.exec_())
+
+#!/usr/bin/env python3
+
+import argparse
+import os
+
+def parse_tempercore(source_code):
+    stdlib_import = False
+    python_lines = []
+
+    lines = source_code.splitlines()
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("use stdlib"):
+            stdlib_import = True
+            continue
+
+        tokens = {
+            "function": "def",
+            "let": "",
+            "define": "",
+            "call": "",
+            "print": "print",
+            "return": "return",
+            "if": "if",
+            "then": ":",
+            "else": "else:",
+            "while": "while",
+            "loop": "for _ in range",
+            "push": ".append",
+            "into": "",
+        }
+
+        for key, val in tokens.items():
+            if key in stripped:
+                stripped = stripped.replace(key, val)
+
+        if "append" in stripped and "to" in stripped:
+            stripped = stripped.replace(" to ", ".append(") + ")"
+
+        python_lines.append("    " + stripped)
+
+    result = []
+    if stdlib_import:
+        result.append("from stdlib import TempercoreStdLib as T")
+    result.append("def main():")
+    result.extend(python_lines)
+    result.append("\nif __name__ == '__main__':")
+    result.append("    main()")
+    return "\n".join(result)
+
+def compile_tempercore_file(input_file, output_file):
+    with open(input_file, 'r') as f:
+        source_code = f.read()
+
+    python_code = parse_tempercore(source_code)
+    with open(output_file, 'w') as f:
+        f.write("# Auto-generated from .tpc Tempercore\n")
+        f.write(python_code + "\n")
+
+    print(f"Compiled {input_file} -> {output_file}")
+
+def main():
+    parser = argparse.ArgumentParser(description='Tempercore CLI Compiler with Stdlib')
+    parser.add_argument('input', help='Input .tpc file')
+    parser.add_argument('--output', help='Output .py file', default='out.py')
+    args = parser.parse_args()
+
+    if not os.path.exists(args.input):
+        print("Input file not found.")
+        return
+
+    compile_tempercore_file(args.input, args.output)
+
+if __name__ == "__main__":
+    main()
+
+    import threading
+import numpy as np
+import sounddevice as sd
+import wave
+import math
+from PIL import Image, ImageDraw
+import matplotlib.pyplot as plt
+
+# --- Graphics Engine ---
+class GraphicsEngine:
+    def __init__(self, width=800, height=600, bg_color=(0, 0, 0)):
+        self.width = width
+        self.height = height
+        self.bg_color = bg_color
+        self.image = Image.new("RGB", (width, height), bg_color)
+        self.draw = ImageDraw.Draw(self.image)
+        self.lock = threading.Lock()
+
+    def clear(self, color=None):
+        with self.lock:
+            self.image.paste(color or self.bg_color, [0, 0, self.width, self.height])
+
+    def set_pixel(self, x, y, color):
+        with self.lock:
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self.image.putpixel((x, y), color)
+
+    def draw_line(self, x0, y0, x1, y1, color):
+        with self.lock:
+            self.draw.line((x0, y0, x1, y1), fill=color)
+
+    def draw_rect(self, x, y, w, h, color, fill=True):
+        with self.lock:
+            if fill:
+                self.draw.rectangle([x, y, x + w, y + h], fill=color)
+            else:
+                self.draw.rectangle([x, y, x + w, y + h], outline=color)
+
+    def draw_circle(self, x, y, r, color, fill=True):
+        with self.lock:
+            bbox = [x - r, y - r, x + r, y + r]
+            if fill:
+                self.draw.ellipse(bbox, fill=color)
+            else:
+                self.draw.ellipse(bbox, outline=color)
+
+    def show(self):
+        with self.lock:
+            self.image.show()
+
+    def save(self, filename):
+        with self.lock:
+            self.image.save(filename)
+
+    def apply_texture(self, texture_img, x, y):
+        with self.lock:
+            self.image.paste(texture_img, (x, y))
+
+    def dither(self):
+        with self.lock:
+            self.image = self.image.convert('1')  # Simple dithering
+
+    def sample(self, x, y):
+        with self.lock:
+            return self.image.getpixel((x, y))
+
+    def shade(self, x, y, intensity):
+        with self.lock:
+            r, g, b = self.image.getpixel((x, y))
+            r = int(r * intensity)
+            g = int(g * intensity)
+            b = int(b * intensity)
+            self.set_pixel(x, y, (r, g, b))
+
+    def ray_trace(self, spheres, light, ambient=0.1):
+        # Simple ray tracer: spheres = [(cx, cy, cz, r, color)], light = (lx, ly, lz)
+        for y in range(self.height):
+            for x in range(self.width):
+                # Ray from camera (0,0,-1) through pixel (x, y, 0)
+                px = (x - self.width / 2) / self.width
+                py = (y - self.height / 2) / self.height
+                ray_dir = np.array([px, py, 1.0])
+                ray_dir /= np.linalg.norm(ray_dir)
+                color = self.bg_color
+                for (cx, cy, cz, r, col) in spheres:
+                    oc = np.array([0, 0, -1]) - np.array([cx, cy, cz])
+                    a = np.dot(ray_dir, ray_dir)
+                    b = 2.0 * np.dot(oc, ray_dir)
+                    c = np.dot(oc, oc) - r * r
+                    discriminant = b * b - 4 * a * c
+                    if discriminant > 0:
+                        t = (-b - math.sqrt(discriminant)) / (2.0 * a)
+                        if t > 0:
+                            hit = np.array([0, 0, -1]) + t * ray_dir
+                            normal = (hit - np.array([cx, cy, cz])) / r
+                            to_light = np.array(light) - hit
+                            to_light /= np.linalg.norm(to_light)
+                            diff = max(np.dot(normal, to_light), 0)
+                            intensity = ambient + 0.9 * diff
+                            color = tuple(int(c * intensity) for c in col)
+                self.set_pixel(x, y, color)
+
+# --- Sound Engine ---
+class SoundEngine:
+    def __init__(self, samplerate=44100):
+        self.samplerate = samplerate
+
+    def play_tone(self, freq, duration, volume=0.5):
+        t = np.linspace(0, duration, int(self.samplerate * duration), False)
+        tone = np.sin(freq * t * 2 * np.pi) * volume
+        sd.play(tone, self.samplerate)
+        sd.wait()
+
+    def play_wave(self, filename):
+        with wave.open(filename, 'rb') as wf:
+            data = wf.readframes(wf.getnframes())
+            arr = np.frombuffer(data, dtype=np.int16)
+            sd.play(arr, wf.getframerate())
+            sd.wait()
+
+    def record(self, filename, duration=3):
+        print(f"Recording {duration}s to {filename}...")
+        rec = sd.rec(int(duration * self.samplerate), samplerate=self.samplerate, channels=1, dtype='int16')
+        sd.wait()
+        with wave.open(filename, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(self.samplerate)
+            wf.writeframes(rec.tobytes())
+
+# --- SIMD Vectorized Math ---
+class SIMDMath:
+    @staticmethod
+    def add(a, b):
+        return np.add(a, b)
+
+    @staticmethod
+    def mul(a, b):
+        return np.multiply(a, b)
+
+    @staticmethod
+    def fma(a, b, c):
+        return np.add(np.multiply(a, b), c)
+
+    @staticmethod
+    def color_blend(a, b, alpha):
+        return (a * alpha + b * (1 - alpha)).astype(np.uint8)
+
+# --- Write-Once-Reuse (Texture/Asset Cache) ---
+class AssetCache:
+    def __init__(self):
+        self.cache = {}
+
+    def load_texture(self, path):
+        if path not in self.cache:
+            self.cache[path] = Image.open(path)
+        return self.cache[path]
+
+    def get(self, key):
+        return self.cache.get(key)
+
+    def set(self, key, value):
+        self.cache[key] = value
+
+# --- Sculpting/Building/Crafting/Modifying ---
+class Sculptor:
+    def __init__(self, engine: GraphicsEngine):
+        self.engine = engine
+
+    def sculpt_sphere(self, cx, cy, r, color):
+        self.engine.draw_circle(cx, cy, r, color, fill=True)
+
+    def carve_rect(self, x, y, w, h):
+        self.engine.draw_rect(x, y, w, h, (0, 0, 0), fill=True)
+
+    def paint(self, x, y, color):
+        self.engine.set_pixel(x, y, color)
+
+    def build_structure(self, x, y, w, h, color):
+        self.engine.draw_rect(x, y, w, h, color, fill=False)
+
+# --- Sampling, Dithering, Intrinsics ---
+def sample_image(image, x, y):
+    return image.getpixel((x, y))
+
+def floyd_steinberg_dither(image):
+    arr = np.array(image.convert('L'), dtype=np.float32)
+    for y in range(arr.shape[0]):
+        for x in range(arr.shape[1]):
+            old = arr[y, x]
+            new = 0 if old < 128 else 255
+            arr[y, x] = new
+            quant = old - new
+            if x + 1 < arr.shape[1]:
+                arr[y, x + 1] += quant * 7 / 16
+            if y + 1 < arr.shape[0]:
+                if x > 0:
+                    arr[y + 1, x - 1] += quant * 3 / 16
+                arr[y + 1, x] += quant * 5 / 16
+                if x + 1 < arr.shape[1]:
+                    arr[y + 1, x + 1] += quant * 1 / 16
+    return Image.fromarray(arr.clip(0, 255).astype(np.uint8))
+
+def cpu_intrinsics():
+    import platform
+    info = {
+        "processor": platform.processor(),
+        "machine": platform.machine(),
+        "platform": platform.platform(),
+        "python_compiler": platform.python_compiler(),
+    }
+    return info
+
+# --- Code Forensics ---
+class CodeForensics:
+    @staticmethod
+    def analyze_code_complexity(source_code):
+        lines = source_code.splitlines()
+        loc = len(lines)
+        comment_lines = sum(1 for l in lines if l.strip().startswith("#"))
+        blank_lines = sum(1 for l in lines if not l.strip())
+        functions = sum(1 for l in lines if l.strip().startswith("def "))
+        classes = sum(1 for l in lines if l.strip().startswith("class "))
+        return {
+            "lines_of_code": loc,
+            "comment_lines": comment_lines,
+            "blank_lines": blank_lines,
+            "functions": functions,
+            "classes": classes
+        }
+
+    @staticmethod
+    def find_unused_functions(source_code):
+        import ast
+        tree = ast.parse(source_code)
+        func_defs = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        calls = {node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+        unused = func_defs - calls
+        return unused
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Graphics
+    gfx = GraphicsEngine(320, 240, (30, 30, 30))
+    gfx.sculptor = Sculptor(gfx)
+    gfx.sculptor.sculpt_sphere(160, 120, 60, (255, 0, 0))
+    gfx.sculptor.build_structure(50, 50, 100, 50, (0, 255, 0))
+    gfx.sculptor.paint(10, 10, (0, 0, 255))
+    gfx.ray_trace([(160, 120, 50, 40, (200, 200, 255))], (200, 200, -100))
+    gfx.dither()
+    gfx.show()
+
+    # Sound
+    snd = SoundEngine()
+    snd.play_tone(440, 0.5)
+    # snd.record("test.wav", 2)
+    # snd.play_wave("test.wav")
+
+    # SIMD
+    a = np.arange(8, dtype=np.float32)
+    b = np.arange(8, dtype=np.float32)
+    print("SIMD add:", SIMDMath.add(a, b))
+    print("SIMD mul:", SIMDMath.mul(a, b))
+
+    # Asset cache
+    cache = AssetCache()
+    # texture = cache.load_texture("texture.png")  # Uncomment if you have a texture
+
+    # Dithering
+    img = Image.new("L", (64, 64), 128)
+    dithered = floyd_steinberg_dither(img)
+    dithered.show()
+
+    # Intrinsics
+    print("CPU Intrinsics:", cpu_intrinsics())
+
+    # Code forensics
+    with open(__file__, "r") as f:
+        code = f.read()
+    print("Code complexity:", CodeForensics.analyze_code_complexity(code))
+    print("Unused functions:", CodeForensics.find_unused_functions(code))
+
