@@ -4252,121 +4252,183 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
 
 print(results)
 
-import threading
-import queue
-import math
-import operator
-from collections import defaultdict, deque
-import time
-import random
+import re
+import sys
 
-# ===============================
-# 🔒 Shared Structures & Globals
-# ===============================
-symbol_table = {}
-memory = defaultdict(int)
-memo_cache = {}
-score_log = []
-task_queue = queue.PriorityQueue()
-lock = threading.Lock()
+# --- Tokenizer and Parser Utilities ---
+def tokenize(line):
+    # Simple tokenizer for demonstration; extend as needed
+    return re.findall(r'\"[^\"]*\"|\S+', line)
 
-# ===================================
-# 🧠 Smart Operation and Evaluation
-# ===================================
-op_map = {
-    '+': operator.add,
-    '-': operator.sub,
-    '*': operator.mul,
-    '/': lambda a, b: a // b if b else 0,
-    '%': lambda a, b: a % b if b else 0,
-    '^': operator.pow
-}
+def parse_assignment(tokens):
+    # let x = 5 | let y:decimal = 8.2
+    m = re.match(r'let\s+(\w+)(?::(\w+))?\s*=\s*(.+)', " ".join(tokens))
+    if m:
+        name, typ, value = m.groups()
+        return ('let', name, typ, value)
+    return None
 
-# Token priority for decision chains
-op_priority = {'+': 1, '-': 1, '*': 2, '/': 2, '%': 2, '^': 3}
+def parse_enum(tokens):
+    # enum mode { OFF, ON, STANDBY }
+    m = re.match(r'enum\s+(\w+)\s*\{([^\}]*)\}', " ".join(tokens))
+    if m:
+        name, members = m.groups()
+        members = [x.strip() for x in members.split(',')]
+        return ('enum', name, members)
+    return None
 
-# Evaluate with critical task decision depth
-def evaluate(expr):
-    stack = []
-    for token in expr.split():
-        if token in op_map:
-            b, a = stack.pop(), stack.pop()
-            r = op_map[token](a, b)
-            stack.append(r)
-        elif token.isdigit():
-            stack.append(int(token))
-        elif token in symbol_table:
-            stack.append(symbol_table[token])
-        else:
-            raise ValueError(f"Unrecognized: {token}")
-    return stack[0] if stack else 0
+def parse_define_list(tokens):
+    # define list alpha: array of string
+    m = re.match(r'define\s+list\s+(\w+):\s*array\s+of\s+(\w+)', " ".join(tokens))
+    if m:
+        name, typ = m.groups()
+        return ('define_list', name, typ)
+    return None
 
-# ===================================
-# 🚦 Hierarchical Task Dispatcher
-# ===================================
-class Task:
-    def __init__(self, tid, varname, expr, prio=0):
-        self.tid = tid
-        self.varname = varname
-        self.expr = expr
-        self.priority = prio
-        self.timestamp = time.time()
+def parse_append(tokens):
+    # append "A" to alpha
+    m = re.match(r'append\s+("[^"]*"|\w+)\s+to\s+(\w+)', " ".join(tokens))
+    if m:
+        value, name = m.groups()
+        return ('append', value, name)
+    return None
 
-    def __lt__(self, other):
-        return (self.priority, -self.timestamp) < (other.priority, -other.timestamp)
+def parse_inspect(tokens):
+    # inspect log level = major
+    m = re.match(r'inspect\s+(\w+)\s+level\s*=\s*(\w+)', " ".join(tokens))
+    if m:
+        what, level = m.groups()
+        return ('inspect', what, level)
+    return None
 
-# Dynamic queue feed
-def queue_task(tid, varname, expr, prio=0):
-    task = Task(tid, varname, expr, prio)
-    task_queue.put(task)
+def parse_throw(tokens):
+    # throw error "missing variable" unless safe_mode
+    m = re.match(r'throw\s+error\s+("[^"]*")\s+unless\s+(\w+)', " ".join(tokens))
+    if m:
+        msg, cond = m.groups()
+        return ('throw', msg, cond)
+    return None
 
-# Smart memoization
-def memoized_solve(varname, expr):
-    if expr in memo_cache:
-        return memo_cache[expr]
-    val = evaluate(expr)
-    memo_cache[expr] = val
-    symbol_table[varname] = val
-    return val
+def parse_pass_error(tokens):
+    # pass error if diagnostic = ignore
+    m = re.match(r'pass\s+error\s+if\s+(\w+)\s*=\s*(\w+)', " ".join(tokens))
+    if m:
+        var, val = m.groups()
+        return ('pass_error', var, val)
+    return None
 
-# ===================================
-# 🧵 Worker Engine with Depth Logic
-# ===================================
-def worker_loop():
-    while not task_queue.empty():
-        task = task_queue.get()
-        with lock:
-            result = memoized_solve(task.varname, task.expr)
-            memory[task.varname] = result
-            score_log.append((task.tid, result))
-            print(f"[{task.tid}] {task.varname} = {result}")
-        task_queue.task_done()
+def parse_assert(tokens):
+    # assert x != 0
+    m = re.match(r'assert\s+(.+)', " ".join(tokens))
+    if m:
+        cond = m.group(1)
+        return ('assert', cond)
+    return None
 
-# ==========================
-# 🧪 Sample Complex Workload
-# ==========================
-def load_hierarchical_tasks():
-    queue_task("T01", "a", "3 4 +", 2)
-    queue_task("T02", "b", "2 a *", 3)
-    queue_task("T03", "c", "b 5 +", 4)
-    queue_task("T04", "d", "c a /", 1)
-    queue_task("T05", "e", "d b *", 5)
-    for i in range(6, 20):
-        x = random.randint(10, 99)
-        y = random.randint(2, 9)
-        prio = random.randint(1, 10)
-        queue_task(f"T{i:02d}", f"v{i}", f"{x} {y} *", prio)
+def parse_highlight(tokens):
+    # highlight "Mismatch at branch"
+    m = re.match(r'highlight\s+("[^"]*")', " ".join(tokens))
+    if m:
+        msg = m.group(1)
+        return ('highlight', msg)
+    return None
 
-# ==============================
-# 🎯 Run Smart Evaluation Engine
-# ==============================
-def run_advanced_tempercore():
-    load_hierarchical_tasks()
-    threads = [threading.Thread(target=worker_loop) for _ in range(6)]
-    for t in threads: t.start()
-    for t in threads: t.join()
-    print("[✓] Tempercore Engine Complete")
+# ... Add more parse_* functions for each syntax as needed ...
 
+# --- Command Dispatcher ---
+def run_tempercore_command(cmd):
+    tokens = tokenize(cmd)
+    if not tokens:
+        return
+
+    # Assignment
+    result = parse_assignment(tokens)
+    if result:
+        _, name, typ, value = result
+        print(f"[Assign] {name} ({typ}) = {value}")
+        return
+
+    # Enum
+    result = parse_enum(tokens)
+    if result:
+        _, name, members = result
+        print(f"[Enum] {name} = {members}")
+        return
+
+    # Define list
+    result = parse_define_list(tokens)
+    if result:
+        _, name, typ = result
+        print(f"[Define List] {name}: array of {typ}")
+        return
+
+    # Append
+    result = parse_append(tokens)
+    if result:
+        _, value, name = result
+        print(f"[Append] {value} to {name}")
+        return
+
+    # Inspect
+    result = parse_inspect(tokens)
+    if result:
+        _, what, level = result
+        print(f"[Inspect] {what} at level {level}")
+        return
+
+    # Throw
+    result = parse_throw(tokens)
+    if result:
+        _, msg, cond = result
+        print(f"[Throw] {msg} unless {cond}")
+        return
+
+    # Pass error
+    result = parse_pass_error(tokens)
+    if result:
+        _, var, val = result
+        print(f"[Pass Error] if {var} = {val}")
+        return
+
+    # Assert
+    result = parse_assert(tokens)
+    if result:
+        _, cond = result
+        print(f"[Assert] {cond}")
+        return
+
+    # Highlight
+    result = parse_highlight(tokens)
+    if result:
+        _, msg = result
+        print(f"[Highlight] {msg}")
+        return
+
+    # ... Add more command handlers for each syntax ...
+
+    print(f"[Unknown or unhandled syntax] {cmd}")
+
+# --- Example Usage ---
 if __name__ == "__main__":
-    run_advanced_tempercore()
+    # Test all syntax lines
+    lines = [
+        'let x = 5',
+        'let y:decimal = 8.2',
+        'enum mode { OFF, ON, STANDBY }',
+        'define list alpha: array of string',
+        'append "A" to alpha',
+        'inspect log level = major',
+        'throw error "missing variable" unless safe_mode',
+        'pass error if diagnostic = ignore',
+        'assert x != 0',
+        'highlight "Mismatch at branch"',
+        # ... add all other syntax lines for testing ...
+    ]
+    for line in lines:
+        run_tempercore_command(line)
+
+        # Test an unknown command
+        run_tempercore_command("unknown command syntax")
+
+
 
