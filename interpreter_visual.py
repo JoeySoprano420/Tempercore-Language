@@ -4710,98 +4710,251 @@ class CodeGenerator:
                             return f"vfmadd231ps {dest}, {src1}, {src2}"
 
 
-import tkinter as tk
-from tkinter import ttk
-import random
-import math
+def trace_instruction(self, instruction):
+    print(f"Executing: {instruction}")
 
-class LogicEngine(tk.Toplevel):
-    def __init__(self, master=None):
-        super().__init__(master)
-        self.title("🧮 OmniThinker Logic & Probability Engine")
-        self.geometry("800x600")
-        self.configure(bg="#12121E")
+    self.emit(instruction)
+    def temperc_main(input_tpc_path):
+        import sys
+        from pathlib import Path
+        from temperc import convert_tpc_to_divseq, divseq_to_asm, build_executable
+        # Define paths
+        input_tpc_path = Path(input_tpc_path).resolve()
+        divseq_path = input_tpc_path.with_suffix('.divseq')
+        asm_path = input_tpc_path.with_suffix('.asm')
+        exe_path = input_tpc_path.with_suffix('.exe')
+        print(f"[1] Converting TPC to DIVSEQ: {input_tpc_path.name} → {divseq_path.name}")
+        # Convert TPC to DIVSEQ
+        convert_tpc_to_divseq(input_tpc_path, divseq_path)
+        print(f"[2] Converting DIVSEQ to ASM: {divseq_path.name} → {asm_path.name}")
+        # Convert DIVSEQ to ASM
+        divseq_to_asm(divseq_path, asm_path)
+        print(f"[3] Building executable: {asm_path.name} → {exe_path.name}")
+        # Build executable from ASM
+        build_executable(asm_path, exe_path)
+        print(f"[4] Executable built successfully: {exe_path.name}")
+        return exe_path
 
-        self.logic_stack = []
-        self.history = []
+    def run_tempercore_command(cmd):
+        tokens = cmd.strip().split()
+        if not tokens:
+            return
+        # Symbolic assignment: sym x = 2*y + 3
+        if tokens[0] == "sym":
+            name = tokens[1]
+            expr = " ".join(tokens[3:]) if tokens[2] == "=" else " ".join(tokens[2:])
+            symbolic.set(name, expr)
+            print(f"[Symbolic] {name} = {symbolic.get(name)}")
+            return
+        # ...rest of your command handling...
+        print(f"[Error] Unknown command: {cmd}")
+        return
 
-        self.build_ui()
+    # Example usage
+    if __name__ == "__main__":
+        input_tpc_path = "example.tpc"  # Replace with your TPC file path
+        exe_path = temperc_main(input_tpc_path)
+        print(f"Executable created at: {exe_path}")
+        def trace_instruction(self, instruction):
+            print(f"Executing: {instruction}")
+            self.emit(instruction)
+            def temperc_main(input_tpc_path):
+                import sys
+                from pathlib import Path
+                from temperc import convert_tpc_to_divseq, divseq_to_asm, build_executable
+                # Define paths
+                input_tpc_path = Path(input_tpc_path).resolve()
+                divseq_path = input_tpc_path.with_suffix('.divseq')
+                asm_path = input_tpc_path.with_suffix('.asm')
+                exe_path = input_tpc_path.with_suffix('.exe')
+                print(f"[1] Converting TPC to DIVSEQ: {input_tpc_path.name} → {divseq_path.name}")
+                # Convert TPC to DIVSEQ
+                convert_tpc_to_divseq(input_tpc_path, divseq_path)
+                print(f"[2] Converting DIVSEQ to ASM: {divseq_path.name} → {asm_path.name}")
+                # Convert DIVSEQ to ASM
+                divseq_to_asm(divseq_path, asm_path)
+                print(f"[3] Building executable: {asm_path.name} → {exe_path.name}")
+                # Build executable from ASM
+                build_executable(asm_path, exe_path)
+                print(f"[4] Executable built successfully: {exe_path.name}")
+                return exe_path
 
-    def build_ui(self):
-        frame = ttk.Frame(self, padding=10)
-        frame.pack(expand=True, fill="both")
+            def run_tempercore_command(cmd):
+                tokens = cmd.strip().split()
+                if not tokens:
+                    return
+                # Symbolic assignment: sym x = 2*y + 3
+                if tokens[0] == "sym":
+                    name = tokens[1]
+                    expr = " ".join(tokens[3:]) if tokens[2] == "=" else " ".join(tokens[2:])
+                    symbolic.set(name, expr)
+                    print(f"[Symbolic] {name} = {symbolic.get(name)}")
+                    return
+                # ...rest of your command handling...
+                print(f"[Error] Unknown command: {cmd}")
+                return
 
-        ttk.Label(frame, text="Enter Statement / Condition / Loop:").pack(anchor='w')
-        self.input_entry = tk.Text(frame, height=4, width=80, bg="#1E1E2C", fg="#EAEAEA", insertbackground="#C4A5F3")
-        self.input_entry.pack(pady=10)
+            # Example usage
+            if __name__ == "__main__":
+                input_tpc_path = "example.tpc"
+                # Replace with your TPC file path
+                exe_path = temperc_main(input_tpc_path)
+                print(f"Executable created at: {exe_path}")
 
-        button_frame = ttk.Frame(frame)
-        button_frame.pack()
+                # Example usage
+                run_tempercore_command("sym x = 2*y + 3")
+                run_tempercore_command("evalsym x y=5")
 
-        ttk.Button(button_frame, text="➕ Push Stack", command=self.push_stack).grid(row=0, column=0, padx=5)
-        ttk.Button(button_frame, text="➖ Pop Stack", command=self.pop_stack).grid(row=0, column=1, padx=5)
-        ttk.Button(button_frame, text="🔁 Loop Sim", command=self.loop_sim).grid(row=0, column=2, padx=5)
-        ttk.Button(button_frame, text="🔀 Conditional", command=self.conditional_check).grid(row=0, column=3, padx=5)
-        ttk.Button(button_frame, text="🎲 Probability Sim", command=self.run_probability).grid(row=0, column=4, padx=5)
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
 
-        ttk.Label(frame, text="Stack & Output Log:").pack(anchor='w', pady=(15, 0))
-        self.output_text = tk.Text(frame, height=20, width=90, bg="#191927", fg="#A5D6FF", state="disabled")
-        self.output_text.pack()
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
 
-    def log(self, text):
-        self.output_text.config(state="normal")
-        self.output_text.insert(tk.END, text + "\n")
-        self.output_text.config(state="disabled")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
 
-    def push_stack(self):
-        stmt = self.input_entry.get("1.0", tk.END).strip()
-        if stmt:
-            self.logic_stack.append(stmt)
-            self.log(f"📥 Pushed: {stmt}")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
 
-    def pop_stack(self):
-        if self.logic_stack:
-            popped = self.logic_stack.pop()
-            self.log(f"📤 Popped: {popped}")
-        else:
-            self.log("⚠ Stack is empty.")
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
 
-    def loop_sim(self):
-        content = self.input_entry.get("1.0", tk.END).strip()
-        try:
-            n = int(content) if content.isdigit() else 5
-            self.log(f"🔁 Looping {n} times:")
-            for i in range(n):
-                self.log(f"  ➜ Iteration {i + 1}")
-        except:
-            self.log("⚠ Loop must contain a valid number.")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
 
-    def conditional_check(self):
-        content = self.input_entry.get("1.0", tk.END).strip()
-        if "==" in content:
-            parts = content.split("==")
-            left, right = parts[0].strip(), parts[1].strip()
-            if left == right:
-                self.log(f"✅ Condition True: {left} == {right}")
-            else:
-                self.log(f"❌ Condition False: {left} != {right}")
-        else:
-            self.log("⚠ Use == for comparison.")
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
 
-    def run_probability(self):
-        result = random.random()
-        self.log(f"🎲 Random Probability Result: {result:.4f}")
-        if result < 0.33:
-            self.log("↪ Low Probability Event Triggered")
-        elif result < 0.66:
-            self.log("↪ Medium Probability Event")
-        else:
-            self.log("↪ High Probability Event")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.withdraw()
-    LogicEngine(root)
-    root.mainloop()
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0') 
+
+                run_tempercore_command('highlight "Mismatch at branch"')
+                run_tempercore_command("unknown command syntax")
+
+                run_tempercore_command("  ")
+                run_tempercore_command("let x = 5")
+                run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+
+                run_tempercore_command("define list alpha: array of string")
+                run_tempercore_command('append "A" to alpha')
+                run_tempercore_command('inspect log level = major')
+                run_tempercore_command('throw error "missing variable" unless safe_mode')
+                run_tempercore_command('pass error if diagnostic = ignore')
+                run_tempercore_command('assert x != 0')
+                run_tempercore_command('highlight "Mismatch at branch"')
+
+                def dump_heap(self):print("Heap State:", self.
+              heap)
+        self.heap.display()
+run_tempercore_command("unknown command syntax")
+run_tempercore_command("  ")
+run_tempercore_command("let x = 5")
+run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+run_tempercore_command("define list alpha: array of string")
+run_tempercore_command('append "A" to alpha')
+run_tempercore_command('inspect log level = major')
+run_tempercore_command('throw error "missing variable" unless safe_mode')
+run_tempercore_command('pass error if diagnostic = ignore')
+run_tempercore_command('assert x != 0')
+run_tempercore_command('highlight "Mismatch at branch"')
+run_tempercore_command("unknown command syntax")
+run_tempercore_command("  ")
+run_tempercore_command("let x = 5")
+
+run_tempercore_command("enum mode { OFF, ON, STANDBY }")
+
+tempercore_command("define list alpha: array of string") # type: ignore
+run_tempercore_command('append "A" to alpha')
+run_tempercore_command('inspect log level = major')
+run_tempercore_command('throw error "missing variable" unless safe_mode')
+run_tempercore_command('pass error if diagnostic = ignore')
+run_tempercore_command('assert x != 0')
+run_tempercore_command('highlight "Mismatch at branch"')
+run_tempercore_command("unknown command syntax")
+
+def trace_instruction(self, instruction):
+    print(f"Executing: {instruction}")
+
+    self.emit(instruction)
+
+    import time
+start = time.perf_counter()
+# ... execute ...
+end = time.perf_counter()
+print(f"Execution time: {end - start:.6f}s")
+
 
 
