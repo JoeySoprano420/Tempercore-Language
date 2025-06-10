@@ -8,8 +8,8 @@ def tokenize(code):
         ('ID',       r'[A-Za-z_][A-Za-z0-9_]*'),
         ('STRING',   r'"[^"]*"'),
         ('OP',       r'[\+\-\*/%]'),
-        ('KEYWORD',  r'\b(let|define|append|if|then|while|do|stack|heap|var|getvar|delvar|vars|clearvars|compile|label|jmp|jz|jnz|call|ret|add|sub|mul|div|mod|neg|cmp|print|pause|break|continue|nop|error)\b'),
-        ('NEWLINE',  r'\n'),
+        ('KEYWORD',  r'\\b(let|define|append|if|then|while|do|stack|heap|var|getvar|delvar|vars|clearvars|compile|label|jmp|jz|jnz|call|ret|add|sub|mul|div|mod|neg|cmp|print|pause|break|continue|nop|error|mov)\\b'),
+        ('NEWLINE',  r'\\n'),
         ('SKIP',     r'[ \t]+'),
         ('MISMATCH', r'.')
     ]
@@ -34,21 +34,7 @@ def parse(tokens):
     idx = 0
     while idx < len(tokens):
         kind, val = tokens[idx]
-        if val == 'let':
-            var = tokens[idx+1][1]
-            value = tokens[idx+3][1]
-            ast.append(('assign', var, value))
-            idx += 4
-        elif val == 'define' and tokens[idx+1][1] == 'list':
-            name = tokens[idx+2][1]
-            ast.append(('list_decl', name))
-            idx += 4
-        elif val == 'append':
-            value = tokens[idx+1][1]
-            name = tokens[idx+3][1]
-            ast.append(('append', name, value))
-            idx += 4
-        elif val == 'stack':
+        if val == 'stack':
             if tokens[idx+1][1] == 'push':
                 ast.append(('stack_push', tokens[idx+2][1]))
                 idx += 3
@@ -58,31 +44,35 @@ def parse(tokens):
         elif val == 'heap':
             action = tokens[idx+1][1]
             if action == 'allocate':
-                name = tokens[idx+2][1]
-                value = tokens[idx+3][1]
-                ast.append(('heap_alloc', name, value))
+                ast.append(('heap_alloc', tokens[idx+2][1], tokens[idx+3][1]))
                 idx += 4
             elif action == 'delete':
-                name = tokens[idx+2][1]
-                ast.append(('heap_delete', name))
+                ast.append(('heap_delete', tokens[idx+2][1]))
                 idx += 3
-        elif val == 'print':
-            ast.append(('print',))
-            idx += 1
+        elif val == 'var':
+            ast.append(('var_decl', tokens[idx+1][1], tokens[idx+2][1]))
+            idx += 3
+        elif val == 'mov':
+            ast.append(('mov', tokens[idx+1][1], tokens[idx+2][1]))
+            idx += 3
         elif val in {'add', 'sub', 'mul', 'div', 'mod', 'neg', 'cmp'}:
             ast.append(('op', val))
             idx += 1
-        elif val == 'label':
-            label = tokens[idx+1][1]
-            ast.append(('label', label))
-            idx += 2
         elif val in {'jmp', 'jz', 'jnz', 'call'}:
-            label = tokens[idx+1][1]
-            ast.append(('jump', val, label))
+            ast.append(('jump', val, tokens[idx+1][1]))
             idx += 2
         elif val == 'ret':
             ast.append(('ret',))
             idx += 1
+        elif val == 'label':
+            ast.append(('label', tokens[idx+1][1]))
+            idx += 2
+        elif val in {'pause', 'continue', 'break', 'nop', 'print'}:
+            ast.append(('meta', val))
+            idx += 1
+        elif val == 'error':
+            ast.append(('error', tokens[idx+1][1]))
+            idx += 2
         else:
             idx += 1
     return ast
@@ -90,13 +80,7 @@ def parse(tokens):
 def generate_divseq(ast):
     lines = []
     for node in ast:
-        if node[0] == 'assign':
-            lines.append(f"var {node[1]} {node[2]}")
-        elif node[0] == 'list_decl':
-            lines.append(f"list {node[1]}")
-        elif node[0] == 'append':
-            lines.append(f"append {node[1]} {node[2]}")
-        elif node[0] == 'stack_push':
+        if node[0] == 'stack_push':
             lines.append(f"stack push {node[1]}")
         elif node[0] == 'stack_pop':
             lines.append("stack pop")
@@ -104,16 +88,22 @@ def generate_divseq(ast):
             lines.append(f"heap allocate {node[1]} {node[2]}")
         elif node[0] == 'heap_delete':
             lines.append(f"heap delete {node[1]}")
-        elif node[0] == 'print':
-            lines.append("print")
+        elif node[0] == 'var_decl':
+            lines.append(f"var {node[1]} {node[2]}")
+        elif node[0] == 'mov':
+            lines.append(f"mov {node[1]} {node[2]}")
         elif node[0] == 'op':
             lines.append(node[1])
-        elif node[0] == 'label':
-            lines.append(f"label {node[1]}")
         elif node[0] == 'jump':
             lines.append(f"{node[1]} {node[2]}")
         elif node[0] == 'ret':
             lines.append("ret")
+        elif node[0] == 'label':
+            lines.append(f"label {node[1]}")
+        elif node[0] == 'meta':
+            lines.append(node[1])
+        elif node[0] == 'error':
+            lines.append(f"error {node[1]}")
     return lines
 
 def divseq_to_nasm(ir):
@@ -138,25 +128,36 @@ def divseq_to_nasm(ir):
             asm += ["    pop rbx", "    pop rax", "    cqo", "    idiv rbx", "    push rdx"]
         elif cmd == "neg":
             asm += ["    pop rax", "    neg rax", "    push rax"]
-        elif cmd == "label":
-            asm.append(f"{tokens[1]}:")
-        elif cmd in {"jmp", "jz", "jnz"}:
-            if cmd in {"jz", "jnz"}:
-                asm.append("    pop rax")
-                asm.append("    test rax, rax")
-            asm.append(f"    {cmd} {tokens[1]}")
-        elif cmd == "ret":
-            asm.append("    ret")
+        elif cmd == "cmp":
+            asm += ["    pop rax", "    pop rbx", "    cmp rbx, rax"]
+        elif cmd == "jmp":
+            asm.append(f"    jmp {tokens[1]}")
+        elif cmd == "jz":
+            asm += ["    pop rax", "    test rax, rax", f"    jz {tokens[1]}"]
+        elif cmd == "jnz":
+            asm += ["    pop rax", "    test rax, rax", f"    jnz {tokens[1]}"]
         elif cmd == "call":
             asm.append(f"    call {tokens[1]}")
+        elif cmd == "ret":
+            asm.append("    ret")
+        elif cmd == "label":
+            asm.append(f"{tokens[1]}:")
         elif cmd == "print":
             asm.append("    ; print (not implemented)")
-        elif cmd == "var":
-            asm.append(f"    ; var {tokens[1]} = {tokens[2]}")
-        elif cmd == "heap":
-            asm.append(f"    ; {line}")
+        elif cmd == "pause":
+            asm.append("    ; pause (no-op)")
+        elif cmd == "continue":
+            asm.append("    ; continue (no-op)")
+        elif cmd == "break":
+            asm.append("    ; break (no-op)")
         elif cmd == "nop":
             asm.append("    nop")
+        elif cmd == "error":
+            asm.append(f"    ; error {tokens[1]}")
+        elif cmd == "var":
+            asm.append(f"    ; var {tokens[1]} = {tokens[2]}")
+        elif cmd == "mov":
+            asm.append(f"    mov {tokens[1]}, {tokens[2]}")
     asm += ["    mov rax, 60", "    xor rdi, rdi", "    syscall"]
     return asm
 
@@ -173,7 +174,6 @@ def assemble_and_execute(asm_code):
         machine_code = bytes(encoding)
         print("[Keystone] Machine code (hex):", machine_code.hex())
 
-        # Allocate RWX memory and execute
         size = len(machine_code)
         mm = mmap.mmap(-1, size, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
         mm.write(machine_code)
@@ -213,5 +213,8 @@ with open("output.asm", "w") as f:
 
 print("✅ Compilation complete. Attempting JIT Execution:")
 assemble_and_execute(asm_code)
+
+
+
 
 
